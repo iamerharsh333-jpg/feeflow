@@ -6,6 +6,7 @@ from app.models import Reminder, Student, Instalment, User, AuditLog
 from app.schemas import ReminderResponse, ReminderPreviewRequest, ReminderPreviewResponse
 from app.auth import require_role
 from app.services.reminders import generate_reminder_message, process_due_reminders
+from app.services.currency import to_decimal, ZERO, PAISE
 
 router = APIRouter(prefix="/reminders", tags=["Reminders"])
 
@@ -16,7 +17,7 @@ def map_reminder_response(r: Reminder) -> dict:
         "student_name": r.student.name if r.student else "Unknown",
         "parent_name": r.student.parent_name if r.student else "Parent",
         "parent_phone": r.student.parent_phone if r.student else "",
-        "outstanding": float(r.instalment.amount - r.instalment.paid_amount) if r.instalment else 0.0,
+        "outstanding": float(max(ZERO, to_decimal(r.instalment.amount) - to_decimal(r.instalment.paid_amount))) if r.instalment else 0.0,
         "due_date": r.due_date,
         "scheduled_date": r.scheduled_date,
         "channel": r.channel,
@@ -64,8 +65,8 @@ def preview_reminder(
     if not instalment:
         raise HTTPException(status_code=404, detail="Instalment not found")
 
-    due_amt = float(instalment.amount - instalment.paid_amount)
-    is_partial = float(instalment.paid_amount) > 0
+    due_amt = max(ZERO, to_decimal(instalment.amount) - to_decimal(instalment.paid_amount))
+    is_partial = to_decimal(instalment.paid_amount) > ZERO
     msg = generate_reminder_message(
         student_name=student.name,
         course=student.course,

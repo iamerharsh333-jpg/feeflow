@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import Instalment, Student, Centre, Reminder, CounsellorTask, User, UserRole
 from app.auth import get_current_user
 from app.services.reminders import get_kolkata_today
+from app.services.currency import to_decimal, ZERO, PAISE
 
 router = APIRouter(prefix="/deadlines", tags=["Deadline Management & Visibility"])
 
@@ -235,7 +236,8 @@ def get_deadlines(
     for ins in instalments:
         st = ins.student
         c_name = st.centre.name if st.centre else "Unknown Centre"
-        bal = max(0.0, float(ins.amount - ins.paid_amount))
+        bal_dec = max(ZERO, to_decimal(ins.amount) - to_decimal(ins.paid_amount))
+        bal = float(bal_dec)
         
         if ins.due_date < today:
             days_rem = 0
@@ -333,16 +335,16 @@ def get_deadlines_summary(
     due_in_3d_count = 0
     due_in_7d_count = 0
     overdue_count = 0
-    total_upcoming_amount = 0.0
-    total_overdue_amount = 0.0
+    total_upcoming_amount = ZERO
+    total_overdue_amount = ZERO
 
     for ins in all_unpaid:
-        bal = max(0.0, float(ins.amount - ins.paid_amount))
+        bal_dec = max(ZERO, to_decimal(ins.amount) - to_decimal(ins.paid_amount))
         if ins.due_date < today:
             overdue_count += 1
-            total_overdue_amount += bal
+            total_overdue_amount += bal_dec
         else:
-            total_upcoming_amount += bal
+            total_upcoming_amount += bal_dec
             if ins.due_date == today:
                 due_today_count += 1
             elif (ins.due_date - today).days <= 3:
@@ -355,8 +357,8 @@ def get_deadlines_summary(
         due_in_3d_count=due_in_3d_count,
         due_in_7d_count=due_in_7d_count,
         overdue_count=overdue_count,
-        total_upcoming_amount=round(total_upcoming_amount, 2),
-        total_overdue_amount=round(total_overdue_amount, 2)
+        total_upcoming_amount=float(total_upcoming_amount),
+        total_overdue_amount=float(total_overdue_amount)
     )
 
 

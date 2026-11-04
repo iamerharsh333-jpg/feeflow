@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import Receipt, Payment, Student, User, Centre
 from app.schemas import ReceiptDetailResponse
 from app.auth import get_current_user
+from app.services.currency import to_decimal
 
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
 
@@ -33,11 +34,11 @@ def map_receipt_detail(r: Receipt, db: Session) -> dict:
         "parent_phone": student.parent_phone if student else "N/A",
         "instalment_number": inst_num,
         "date": r.date,
-        "base_amount": float(r.base_amount),
+        "base_amount": float(to_decimal(r.base_amount)),
         "gst_rate": r.gst_rate,
-        "cgst_amount": float(r.cgst_amount),
-        "sgst_amount": float(r.sgst_amount),
-        "total_amount": float(r.total_amount),
+        "cgst_amount": float(to_decimal(r.cgst_amount)),
+        "sgst_amount": float(to_decimal(r.sgst_amount)),
+        "total_amount": float(to_decimal(r.total_amount)),
         "gst_number": f"{r.gst_number} (Demo GSTIN)",
         "tax_treatment": "Standard 18% GST (9% CGST + 9% SGST) — Simulated Institute Registration (Demo)",
         "is_demo": True

@@ -1,6 +1,7 @@
 import io
 import csv
 import datetime
+from decimal import Decimal
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ from app.database import get_db
 from app.models import Student, Centre, Payment, User
 from app.auth import require_role
 from app.services.fees import get_student_fee_summary
+from app.services.currency import to_decimal, ZERO, PAISE, ONE_HUNDRED
 
 router = APIRouter(prefix="/reports", tags=["Reports & Exports"])
 
@@ -24,16 +26,16 @@ def get_centre_collection_report(
     rows = []
     for c in centres:
         c_students = db.query(Student).filter(Student.centre_id == c.id).all()
-        collected = sum(get_student_fee_summary(s, db)["amount_paid"] for s in c_students)
-        outstanding = sum(get_student_fee_summary(s, db)["outstanding_amount"] for s in c_students)
+        collected = sum((to_decimal(get_student_fee_summary(s, db)["amount_paid"]) for s in c_students), ZERO)
+        outstanding = sum((to_decimal(get_student_fee_summary(s, db)["outstanding_amount"]) for s in c_students), ZERO)
         total = collected + outstanding
-        rate = round((collected / total * 100.0), 1) if total > 0 else 0.0
+        rate = float(round((collected / total * ONE_HUNDRED), 1)) if total > ZERO else 0.0
         rows.append({
             "centre": c.name,
             "students": len(c_students),
-            "collected": collected,
-            "outstanding": outstanding,
-            "total": total,
+            "collected": float(collected),
+            "outstanding": float(outstanding),
+            "total": float(total),
             "collection_rate_percent": rate
         })
 
@@ -42,7 +44,7 @@ def get_centre_collection_report(
         writer = csv.writer(output)
         writer.writerow(["Centre", "Students", "Collected (INR)", "Outstanding (INR)", "Total (INR)", "Collection Rate (%)"])
         for r in rows:
-            writer.writerow([r["centre"], r["students"], r["collected"], r["outstanding"], r["total"], r["collection_rate_percent"]])
+            writer.writerow([r["centre"], r["students"], f"{r['collected']:.2f}", f"{r['outstanding']:.2f}", f"{r['total']:.2f}", r["collection_rate_percent"]])
         return Response(content=output.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=centre_collection.csv"})
 
     return rows
@@ -61,19 +63,32 @@ def get_batch_dues_report(
     for s in students:
         key = f"{s.course} - {s.batch}"
         if key not in batch_map:
-            batch_map[key] = {"course": s.course, "batch": s.batch, "students": 0, "collected": 0.0, "outstanding": 0.0}
+            batch_map[key] = {"course": s.course, "batch": s.batch, "students": 0, "collected": ZERO, "outstanding": ZERO}
         sum_res = get_student_fee_summary(s, db)
         batch_map[key]["students"] += 1
-        batch_map[key]["collected"] += sum_res["amount_paid"]
-        batch_map[key]["outstanding"] += sum_res["outstanding_amount"]
+        batch_map[key]["collected"] += to_decimal(sum_res["amount_paid"])
+        batch_map[key]["outstanding"] += to_decimal(sum_res["outstanding_amount"])
 
-    rows = list(batch_map.values())
+    rows = []
+    for b in batch_map.values():
+        c_val = b["collected"]
+        o_val = b["outstanding"]
+        t_val = c_val + o_val
+        rows.append({
+            "course": b["course"],
+            "batch": b["batch"],
+            "students": b["students"],
+            "collected": float(c_val),
+            "outstanding": float(o_val),
+            "total": float(t_val)
+        })
+
     if export_csv:
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(["Course", "Batch", "Students", "Collected (INR)", "Outstanding (INR)", "Total (INR)"])
         for r in rows:
-            writer.writerow([r["course"], r["batch"], r["students"], r["collected"], r["outstanding"], r["collected"] + r["outstanding"]])
+            writer.writerow([r["course"], r["batch"], r["students"], f"{r['collected']:.2f}", f"{r['outstanding']:.2f}", f"{r['total']:.2f}"])
         return Response(content=output.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=batch_dues.csv"})
 
     return rows
@@ -97,12 +112,13 @@ def get_payment_reconciliation_report(
 
     rows = []
     for p in payments:
+        amt_dec = to_decimal(p.amount)
         rows.append({
             "transaction_id": p.transaction_id,
             "student_id": p.student_id or "Unmatched",
             "student_name": p.student.name if p.student else "Unknown",
             "payment_date": p.payment_date.strftime("%Y-%m-%d"),
-            "amount": float(p.amount),
+            "amount": float(amt_dec),
             "method": p.method,
             "reference_no": p.reference_no,
             "status": p.status
@@ -113,7 +129,7 @@ def get_payment_reconciliation_report(
         writer = csv.writer(output)
         writer.writerow(["Transaction ID", "Student ID", "Student Name", "Date", "Amount (INR)", "Method", "Reference", "Status"])
         for r in rows:
-            writer.writerow([r["transaction_id"], r["student_id"], r["student_name"], r["payment_date"], r["amount"], r["method"], r["reference_no"], r["status"]])
+            writer.writerow([r["transaction_id"], r["student_id"], r["student_name"], r["payment_date"], f"{r['amount']:.2f}", r["method"], r["reference_no"], r["status"]])
         return Response(content=output.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=payment_reconciliation.csv"})
 
     return rows
@@ -128,6 +144,7 @@ def get_tally_compatible_export(
     """
     Exports successful payments in standard Tally Receipt Voucher CSV format.
     Columns: Date, Voucher Type, Voucher No, Ledger Name, Amount, Dr/Cr
+    Guarantees exact Decimal monetary representation (e.g. 12500.50).
     """
     query = db.query(Payment).filter(Payment.status.in_(["Success", "Paid"]))
     if current_user.role == "accounts_executive" and current_user.centre_id:
@@ -144,17 +161,18 @@ def get_tally_compatible_export(
 
     for p in payments:
         date_str = p.payment_date.strftime("%d-%m-%Y")
-        amt = float(p.amount)
+        amt_dec = to_decimal(p.amount)
+        amt_str = f"{amt_dec:.2f}"
+        
         # Bank / Cash Debit row
         bank_ledger = "HDFC Bank A/c" if p.method in ["UPI", "Bank Transfer", "Online"] else "Cash in Hand"
-        writer.writerow([date_str, "Receipt", p.transaction_id, bank_ledger, amt, "Dr"])
+        writer.writerow([date_str, "Receipt", p.transaction_id, bank_ledger, amt_str, "Dr"])
         # Student Fee Revenue Credit row
         fee_ledger = f"Fee Revenue - {p.student.course if p.student else 'General'}"
-        writer.writerow([date_str, "Receipt", p.transaction_id, fee_ledger, amt, "Cr"])
+        writer.writerow([date_str, "Receipt", p.transaction_id, fee_ledger, amt_str, "Cr"])
 
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=tally_receipt_vouchers.csv"}
     )
-

@@ -1,10 +1,11 @@
 import datetime
 import uuid
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Tuple, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.models import RefundRequest, Student, Payment, AuditLog
+from app.services.currency import to_decimal, round_currency, ZERO, PAISE, ONE_HUNDRED
 
 REFUND_DEADLINE_DAYS = 10
 CURRENT_POLICY_CODE = "REFUND_STD_POLICY_2026"
@@ -15,9 +16,9 @@ def calculate_pro_rata_refund(
     course_end_date: datetime.date,
     withdrawal_date: datetime.date,
     amount_paid: Decimal,
-    discount_applied: Decimal = Decimal("0.0"),
-    processing_fee_percent: float = 5.0,
-    material_fee: Decimal = Decimal("5000.0"),
+    discount_applied: Decimal = ZERO,
+    processing_fee_percent: Decimal = Decimal("5.00"),
+    material_fee: Decimal = Decimal("5000.00"),
     policy_code: str = CURRENT_POLICY_CODE,
     policy_version: str = CURRENT_POLICY_VERSION
 ) -> Dict[str, Any]:
@@ -30,17 +31,19 @@ def calculate_pro_rata_refund(
     days_attended = max(0, min(total_days, (withdrawal_date - course_start_date).days))
     unused_days = max(0, total_days - days_attended)
     
-    paid_float = float(amount_paid)
-    discount_float = float(discount_applied)
+    paid_dec = to_decimal(amount_paid)
+    discount_dec = to_decimal(discount_applied)
+    proc_percent = to_decimal(processing_fee_percent, default=Decimal("5.00"))
+    mat_fee = to_decimal(material_fee, default=Decimal("5000.00"))
     
-    # Pro-rata on the actual net amount paid by student
-    pro_rata = round((paid_float * unused_days) / float(total_days), 2)
-    processing = round(pro_rata * (processing_fee_percent / 100.0), 2)
-    material = float(material_fee)
+    # Pro-rata on the actual net amount paid by student using pure Decimal
+    pro_rata = ((paid_dec * Decimal(unused_days)) / Decimal(total_days)).quantize(PAISE, rounding=ROUND_HALF_UP)
+    processing = (pro_rata * (proc_percent / ONE_HUNDRED)).quantize(PAISE, rounding=ROUND_HALF_UP)
+    material = mat_fee.quantize(PAISE, rounding=ROUND_HALF_UP)
     
     # Estimated refund cannot exceed total paid amount, nor can it be negative
-    raw_refund = max(0.0, round(pro_rata - processing - material, 2))
-    final_refund = min(raw_refund, paid_float)
+    raw_refund = max(ZERO, pro_rata - processing - material)
+    final_refund = min(raw_refund, paid_dec).quantize(PAISE, rounding=ROUND_HALF_UP)
     
     deadline_met = (withdrawal_date - course_start_date).days <= REFUND_DEADLINE_DAYS
     processing_deadline = withdrawal_date + datetime.timedelta(days=10)
@@ -55,8 +58,8 @@ def calculate_pro_rata_refund(
         "total_days": total_days,
         "days_attended": days_attended,
         "unused_days": unused_days,
-        "amount_paid": paid_float,
-        "discount_applied": discount_float,
+        "amount_paid": paid_dec,
+        "discount_applied": discount_dec,
         "pro_rata_refund": pro_rata,
         "processing_fee": processing,
         "material_fee": material,
@@ -78,8 +81,8 @@ def create_refund_request(
     withdrawal_reason: str = "Student voluntary withdrawal",
     amount_paid: Optional[Decimal] = None,
     discount_applied: Optional[Decimal] = None,
-    processing_fee_percent: float = 5.0,
-    material_fee: Decimal = Decimal("5000.0"),
+    processing_fee_percent: Decimal = Decimal("5.00"),
+    material_fee: Decimal = Decimal("5000.00"),
     policy_code: str = CURRENT_POLICY_CODE,
     policy_version: str = CURRENT_POLICY_VERSION,
     policy_confirmed: bool = True,
@@ -91,16 +94,20 @@ def create_refund_request(
         raise HTTPException(status_code=404, detail=f"Student {student_id} not found")
 
     # If amount_paid is not explicitly passed or is 0, sum paid payments
-    if amount_paid is None or amount_paid <= Decimal("0.0"):
+    if amount_paid is None or to_decimal(amount_paid) <= ZERO:
         successful_payments = db.query(Payment).filter(
             Payment.student_id == student_id,
             Payment.status.in_(["Success", "Paid"])
         ).all()
-        actual_paid = sum(Decimal(str(p.amount)) for p in successful_payments)
-        amount_paid = actual_paid if actual_paid > Decimal("0.0") else student.total_fee
+        actual_paid = sum((to_decimal(p.amount) for p in successful_payments), ZERO)
+        amount_paid = actual_paid if actual_paid > ZERO else to_decimal(student.total_fee)
+    else:
+        amount_paid = to_decimal(amount_paid)
 
     if discount_applied is None:
-        discount_applied = sum(Decimal(str(d.amount)) for d in student.discounts) if student.discounts else Decimal("0.0")
+        discount_applied = sum((to_decimal(d.amount) for d in student.discounts), ZERO) if student.discounts else ZERO
+    else:
+        discount_applied = to_decimal(discount_applied)
 
     calc = calculate_pro_rata_refund(
         course_start_date=course_start_date,
@@ -125,10 +132,10 @@ def create_refund_request(
         total_days=calc["total_days"],
         days_attended=calc["days_attended"],
         unused_days=calc["unused_days"],
-        pro_rata_amount=Decimal(str(calc["pro_rata_refund"])),
-        processing_fee=Decimal(str(calc["processing_fee"])),
-        material_fee=material_fee,
-        estimated_refund=Decimal(str(calc["final_refund"])),
+        pro_rata_amount=calc["pro_rata_refund"],
+        processing_fee=calc["processing_fee"],
+        material_fee=calc["material_fee"],
+        estimated_refund=calc["final_refund"],
         policy_code=policy_code,
         policy_version=policy_version,
         status="Pending Review",
@@ -171,13 +178,15 @@ def approve_refund_request(
     if not reason or not reason.strip():
         raise HTTPException(status_code=400, detail="Mandatory approval reason is required.")
         
-    if approved_amount <= Decimal("0.0"):
+    approved_amount = to_decimal(approved_amount)
+    if approved_amount <= ZERO:
         raise HTTPException(status_code=400, detail="Approved refund amount must be greater than zero.")
 
-    if approved_amount > req.amount_paid:
+    req_amount_paid = to_decimal(req.amount_paid)
+    if approved_amount > req_amount_paid:
         raise HTTPException(
             status_code=400,
-            detail=f"Approved refund (₹{approved_amount}) cannot exceed eligible paid amount (₹{req.amount_paid})."
+            detail=f"Approved refund (₹{approved_amount}) cannot exceed eligible paid amount (₹{req_amount_paid})."
         )
         
     req.status = "Approved"
@@ -269,4 +278,3 @@ def process_simulated_refund(
     db.commit()
     db.refresh(req)
     return req
-

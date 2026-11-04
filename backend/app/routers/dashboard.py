@@ -1,4 +1,5 @@
 import datetime
+from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
@@ -7,6 +8,7 @@ from app.models import Student, Payment, Centre, User, Instalment
 from app.schemas import DashboardSummary
 from app.auth import require_role
 from app.services.fees import get_student_fee_summary
+from app.services.currency import to_decimal, round_currency, ZERO, PAISE, ONE_HUNDRED
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -32,19 +34,19 @@ def get_dashboard_summary(
     students = query.all()
     total_students = len(students)
 
-    total_fee = 0.0
-    total_collected = 0.0
-    total_outstanding = 0.0
-    total_overdue = 0.0
+    total_fee = ZERO
+    total_collected = ZERO
+    total_outstanding = ZERO
+    total_overdue = ZERO
     overdue_students_count = 0
 
     today = datetime.date.today()
 
     for s in students:
         summary = get_student_fee_summary(s, db)
-        total_fee += summary["effective_fee"]
-        total_collected += summary["amount_paid"]
-        total_outstanding += summary["outstanding_amount"]
+        total_fee += to_decimal(summary["effective_fee"])
+        total_collected += to_decimal(summary["amount_paid"])
+        total_outstanding += to_decimal(summary["outstanding_amount"])
 
         overdue_insts = [
             i for i in s.instalments
@@ -52,13 +54,14 @@ def get_dashboard_summary(
         ]
         if overdue_insts:
             overdue_students_count += 1
-            total_overdue += sum(float(i.amount - i.paid_amount) for i in overdue_insts)
+            for i in overdue_insts:
+                total_overdue += (to_decimal(i.amount) - to_decimal(i.paid_amount))
 
     collection_rate = 0.0
-    if total_fee > 0:
-        collection_rate = round((total_collected / total_fee) * 100.0, 1)
-    elif total_collected + total_outstanding > 0:
-        collection_rate = round((total_collected / (total_collected + total_outstanding)) * 100.0, 1)
+    if total_fee > ZERO:
+        collection_rate = float(round((total_collected / total_fee) * ONE_HUNDRED, 1))
+    elif total_collected + total_outstanding > ZERO:
+        collection_rate = float(round((total_collected / (total_collected + total_outstanding)) * ONE_HUNDRED, 1))
 
     unmatched_query = db.query(Payment).filter(Payment.status.in_(["Unmatched", "Under Review"]))
     if eff_centre_id:
@@ -78,10 +81,10 @@ def get_dashboard_summary(
 
     return {
         "total_students": total_students,
-        "total_fee": round(total_fee, 2),
-        "fees_collected": round(total_collected, 2),
-        "outstanding_fees": round(total_outstanding, 2),
-        "overdue_fees": round(total_overdue, 2),
+        "total_fee": float(total_fee),
+        "fees_collected": float(total_collected),
+        "outstanding_fees": float(total_outstanding),
+        "overdue_fees": float(total_overdue),
         "collection_rate": collection_rate,
         "overdue_students_count": overdue_students_count,
         "unmatched_payments_count": unmatched_count
@@ -109,33 +112,32 @@ def get_monthly_collections(
 
     # Academic year months (Apr through Nov)
     month_names = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov"]
-    current_year = datetime.date.today().year
 
-    # Aggregate collected by month
-    collected_map: Dict[str, float] = {m: 0.0 for m in month_names}
+    # Aggregate collected by month in Decimal
+    collected_map: Dict[str, Decimal] = {m: ZERO for m in month_names}
     for p in payments:
         m_abbr = p.payment_date.strftime("%b")
         if m_abbr in collected_map:
-            collected_map[m_abbr] += float(p.amount)
+            collected_map[m_abbr] += to_decimal(p.amount)
 
-    # Aggregate target by instalment due dates
-    target_map: Dict[str, float] = {m: 0.0 for m in month_names}
+    # Aggregate target by instalment due dates in Decimal
+    target_map: Dict[str, Decimal] = {m: ZERO for m in month_names}
     for ins in instalments:
         m_abbr = ins.due_date.strftime("%b")
         if m_abbr in target_map:
-            target_map[m_abbr] += float(ins.amount)
+            target_map[m_abbr] += to_decimal(ins.amount)
 
     result = []
     for m in month_names:
         c_val = collected_map[m]
         t_val = target_map[m]
         # If no instalment is due in that month, target reflects collected or baseline
-        if t_val == 0.0 and c_val > 0.0:
-            t_val = round(c_val * 1.1, 2)
+        if t_val == ZERO and c_val > ZERO:
+            t_val = round_currency(c_val * Decimal("1.10"))
         result.append({
             "month": m,
-            "collected": round(c_val, 2),
-            "target": round(t_val, 2)
+            "collected": float(c_val),
+            "target": float(t_val)
         })
 
     return result
@@ -155,26 +157,26 @@ def get_centre_wise_collections(
 
     for c in centres:
         c_students = db.query(Student).filter(Student.centre_id == c.id).all()
-        collected = 0.0
-        outstanding = 0.0
-        overdue = 0.0
+        collected = ZERO
+        outstanding = ZERO
+        overdue = ZERO
         for s in c_students:
             sum_res = get_student_fee_summary(s, db)
-            collected += sum_res["amount_paid"]
-            outstanding += sum_res["outstanding_amount"]
+            collected += to_decimal(sum_res["amount_paid"])
+            outstanding += to_decimal(sum_res["outstanding_amount"])
             for ins in s.instalments:
                 if ins.status != "Paid" and ins.due_date < today:
-                    overdue += float(ins.amount - ins.paid_amount)
+                    overdue += (to_decimal(ins.amount) - to_decimal(ins.paid_amount))
 
         total = collected + outstanding
-        rate = round((collected / total * 100.0), 1) if total > 0 else 0.0
+        rate = float(round((collected / total * ONE_HUNDRED), 1)) if total > ZERO else 0.0
         results.append({
             "centre_id": c.id,
             "centre": c.name,
             "students": len(c_students),
-            "collected": round(collected, 2),
-            "outstanding": round(outstanding, 2),
-            "overdue": round(overdue, 2),
+            "collected": float(collected),
+            "outstanding": float(outstanding),
+            "overdue": float(overdue),
             "collection_rate": rate
         })
     return results
@@ -203,21 +205,32 @@ def get_batch_wise_collections(
                 "batch": s.batch,
                 "label": key,
                 "students": 0,
-                "collected": 0.0,
-                "outstanding": 0.0,
-                "overdue": 0.0
+                "collected": ZERO,
+                "outstanding": ZERO,
+                "overdue": ZERO
             }
 
         sum_res = get_student_fee_summary(s, db)
         batches[key]["students"] += 1
-        batches[key]["collected"] += sum_res["amount_paid"]
-        batches[key]["outstanding"] += sum_res["outstanding_amount"]
+        batches[key]["collected"] += to_decimal(sum_res["amount_paid"])
+        batches[key]["outstanding"] += to_decimal(sum_res["outstanding_amount"])
 
         for ins in s.instalments:
             if ins.status != "Paid" and ins.due_date < today:
-                batches[key]["overdue"] += float(ins.amount - ins.paid_amount)
+                batches[key]["overdue"] += (to_decimal(ins.amount) - to_decimal(ins.paid_amount))
 
-    return list(batches.values())
+    res = []
+    for b in batches.values():
+        res.append({
+            "course": b["course"],
+            "batch": b["batch"],
+            "label": b["label"],
+            "students": b["students"],
+            "collected": float(b["collected"]),
+            "outstanding": float(b["outstanding"]),
+            "overdue": float(b["overdue"])
+        })
+    return res
 
 @router.get("/ageing")
 def get_overdue_ageing(
@@ -234,17 +247,17 @@ def get_overdue_ageing(
     students = query.all()
 
     # Buckets: "Not Due", "1–30 days", "31–60 days", "Over 60 days"
-    not_due_amt, not_due_cnt = 0.0, 0
-    b1_amt, b1_cnt = 0.0, 0 # 1-30 days
-    b2_amt, b2_cnt = 0.0, 0 # 31-60 days
-    b3_amt, b3_cnt = 0.0, 0 # > 60 days
+    not_due_amt, not_due_cnt = ZERO, 0
+    b1_amt, b1_cnt = ZERO, 0 # 1-30 days
+    b2_amt, b2_cnt = ZERO, 0 # 31-60 days
+    b3_amt, b3_cnt = ZERO, 0 # > 60 days
 
     for s in students:
         for ins in s.instalments:
             if ins.status == "Paid":
                 continue
-            due_amt = float(ins.amount - ins.paid_amount)
-            if due_amt <= 0:
+            due_amt = to_decimal(ins.amount) - to_decimal(ins.paid_amount)
+            if due_amt <= ZERO:
                 continue
 
             if ins.due_date >= today:
@@ -263,8 +276,8 @@ def get_overdue_ageing(
                     b3_cnt += 1
 
     return [
-        {"bucket": "Not Due", "amount": round(not_due_amt, 2), "count": not_due_cnt},
-        {"bucket": "1–30 days", "amount": round(b1_amt, 2), "count": b1_cnt},
-        {"bucket": "31–60 days", "amount": round(b2_amt, 2), "count": b2_cnt},
-        {"bucket": "Over 60 days", "amount": round(b3_amt, 2), "count": b3_cnt},
+        {"bucket": "Not Due", "amount": float(not_due_amt), "count": not_due_cnt},
+        {"bucket": "1–30 days", "amount": float(b1_amt), "count": b1_cnt},
+        {"bucket": "31–60 days", "amount": float(b2_amt), "count": b2_cnt},
+        {"bucket": "Over 60 days", "amount": float(b3_amt), "count": b3_cnt},
     ]

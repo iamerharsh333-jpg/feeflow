@@ -3,18 +3,20 @@ import uuid
 import hmac
 import hashlib
 from decimal import Decimal
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, Union
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from app.config import settings
 from app.models import Payment, Instalment, Student, Receipt, AuditLog, Reminder
 from app.services.fees import get_student_fee_summary
+from app.services.currency import to_decimal, round_currency, split_gst, ZERO, PAISE
 
 # In-memory store for active payment intents: order_id -> intent dict
 INTENT_STORE: Dict[str, dict] = {}
 
-def generate_gateway_signature(order_id: str, amount: float, student_id: str) -> str:
-    msg = f"{order_id}|{amount:.2f}|{student_id}".encode("utf-8")
+def generate_gateway_signature(order_id: str, amount: Any, student_id: str) -> str:
+    amount_dec = to_decimal(amount)
+    msg = f"{order_id}|{amount_dec:.2f}|{student_id}".encode("utf-8")
     return hmac.new(settings.JWT_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
 
 def create_payment_intent(
@@ -43,21 +45,21 @@ def create_payment_intent(
     if not instalment:
         raise HTTPException(status_code=404, detail="Instalment not found for this student.")
 
-    remaining_due = instalment.amount - instalment.paid_amount
-    if remaining_due <= Decimal("0"):
+    remaining_due = to_decimal(instalment.amount) - to_decimal(instalment.paid_amount)
+    if remaining_due <= ZERO:
         raise HTTPException(status_code=400, detail="Instalment is already fully paid.")
 
-    target_amount = amount if amount is not None else remaining_due
-    if target_amount <= Decimal("0"):
+    target_amount = to_decimal(amount) if amount is not None else remaining_due
+    if target_amount <= ZERO:
         raise HTTPException(status_code=400, detail="Payment amount must be greater than zero.")
     if target_amount > remaining_due:
         raise HTTPException(
             status_code=400,
-            detail=f"Payment amount (₹{float(target_amount):,.2f}) exceeds instalment remaining balance (₹{float(remaining_due):,.2f})."
+            detail=f"Payment amount (₹{target_amount:,.2f}) exceeds instalment remaining balance (₹{remaining_due:,.2f})."
         )
 
     order_id = f"order_mock_{uuid.uuid4().hex[:12]}"
-    signature = generate_gateway_signature(order_id, float(target_amount), student.id)
+    signature = generate_gateway_signature(order_id, target_amount, student.id)
     intent_id = f"pi_mock_{uuid.uuid4().hex[:12]}"
 
     intent_record = {
@@ -67,7 +69,7 @@ def create_payment_intent(
         "student_name": student.name,
         "instalment_id": instalment.id,
         "instalment_number": instalment.instalment_number,
-        "amount": float(target_amount),
+        "amount": target_amount,
         "currency": "INR",
         "method": method,
         "signature": signature,
@@ -157,7 +159,7 @@ def verify_and_process_simulated_payment(
                 notify_payment_cancelled(
                     db=db,
                     student=student_obj,
-                    amount=float(intent["amount"]),
+                    amount=to_decimal(intent["amount"]),
                     reference_no=payment_id
                 )
                 db.commit()
@@ -173,7 +175,7 @@ def verify_and_process_simulated_payment(
             transaction_id=f"TXN-FAIL-{uuid.uuid4().hex[:8].upper()}",
             student_id=intent["student_id"],
             instalment_id=intent["instalment_id"],
-            amount=Decimal(str(intent["amount"])),
+            amount=to_decimal(intent["amount"]),
             payment_date=datetime.date.today(),
             method=intent["method"],
             reference_no=payment_id,
@@ -200,7 +202,7 @@ def verify_and_process_simulated_payment(
                 notify_payment_failed(
                     db=db,
                     student=student_obj,
-                    amount=float(intent["amount"]),
+                    amount=to_decimal(intent["amount"]),
                     reference_no=payment_id,
                     payment_id=payment_record.id
                 )
@@ -214,7 +216,7 @@ def verify_and_process_simulated_payment(
     if simulation_status.lower() == "success":
         payment = record_student_payment(
             db=db,
-            amount=Decimal(str(intent["amount"])),
+            amount=to_decimal(intent["amount"]),
             method=intent["method"],
             reference_no=payment_id,
             student_id=intent["student_id"],
@@ -235,12 +237,7 @@ def generate_gst_receipt(
     student: Student,
     db: Session
 ) -> Receipt:
-    amt = float(payment.amount)
-    gst_rate = float(settings.GST_RATE)
-    base_amt = round(amt / (1.0 + (gst_rate / 100.0)), 2)
-    tax_amt = round(amt - base_amt, 2)
-    cgst = round(tax_amt / 2.0, 2)
-    sgst = round(tax_amt - cgst, 2) # ensure exact sum
+    base_amt, cgst, sgst = split_gst(payment.amount, settings.GST_RATE)
     
     year = datetime.date.today().year
     receipt_no = f"REC-{year}-{uuid.uuid4().hex[:6].upper()}"
@@ -250,11 +247,11 @@ def generate_gst_receipt(
         payment_id=payment.id,
         student_id=student.id,
         date=payment.payment_date,
-        base_amount=Decimal(str(base_amt)),
-        gst_rate=gst_rate,
-        cgst_amount=Decimal(str(cgst)),
-        sgst_amount=Decimal(str(sgst)),
-        total_amount=payment.amount,
+        base_amount=base_amt,
+        gst_rate=float(settings.GST_RATE),
+        cgst_amount=cgst,
+        sgst_amount=sgst,
+        total_amount=to_decimal(payment.amount),
         gst_number="08AAACP1234F1Z5"
     )
     db.add(receipt)
@@ -272,7 +269,8 @@ def record_student_payment(
     recorded_by: str = "system"
 ) -> Payment:
     # 0. Amount validation
-    if amount <= Decimal("0"):
+    amount = to_decimal(amount)
+    if amount <= ZERO:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Payment amount must be greater than zero."
@@ -327,7 +325,7 @@ def record_student_payment(
                 from app.services.notifications import notify_unmatched_payment
                 notify_unmatched_payment(
                     db=db,
-                    amount=float(amount),
+                    amount=amount,
                     reference_no=reference_no,
                     payment_id=payment_id,
                     centre_id=None
@@ -343,11 +341,11 @@ def record_student_payment(
 
     # 3. Verify payment amount cannot exceed permitted outstanding balance
     summary = get_student_fee_summary(student, db)
-    total_outstanding = Decimal(str(summary["outstanding_amount"]))
+    total_outstanding = to_decimal(summary["outstanding_amount"])
     if amount > total_outstanding:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Payment amount (₹{float(amount):,.2f}) exceeds student outstanding balance (₹{float(total_outstanding):,.2f})."
+            detail=f"Payment amount (₹{amount:,.2f}) exceeds student outstanding balance (₹{total_outstanding:,.2f})."
         )
 
     # 4. Find matching instalment or oldest unpaid instalment
@@ -370,11 +368,11 @@ def record_student_payment(
         ).order_by(Instalment.instalment_number.asc()).first()
 
     if target_instalment:
-        ins_outstanding = target_instalment.amount - target_instalment.paid_amount
+        ins_outstanding = to_decimal(target_instalment.amount) - to_decimal(target_instalment.paid_amount)
         if amount > ins_outstanding:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Payment amount (₹{float(amount):,.2f}) exceeds instalment balance (₹{float(ins_outstanding):,.2f})."
+                detail=f"Payment amount (₹{amount:,.2f}) exceeds instalment balance (₹{ins_outstanding:,.2f})."
             )
 
     # 5. Execute transactional payment write
@@ -396,10 +394,11 @@ def record_student_payment(
 
         # 6. Update instalment paid amount and status
         if target_instalment:
-            new_paid = target_instalment.paid_amount + amount
+            ins_total = to_decimal(target_instalment.amount)
+            new_paid = to_decimal(target_instalment.paid_amount) + amount
             target_instalment.paid_amount = new_paid
             
-            if new_paid >= target_instalment.amount:
+            if new_paid >= ins_total:
                 target_instalment.status = "Paid"
                 target_instalment.paid_date = pay_date
                 
@@ -454,7 +453,7 @@ def record_student_payment(
             notify_payment_success(
                 db=db,
                 student=student,
-                amount=float(amount),
+                amount=amount,
                 receipt_no=receipt_num,
                 payment_id=payment.id
             )
@@ -534,6 +533,7 @@ def auto_match_incoming_payment(
       in the accounts reconciliation queue without marking any instalment paid.
     Returns: (payment, is_matched)
     """
+    amount = to_decimal(amount)
     # 1. Idempotency: check if reference_no or order_id already exists
     existing = db.query(Payment).filter(
         (Payment.reference_no == reference_no) |
@@ -560,7 +560,7 @@ def auto_match_incoming_payment(
         if signature:
             if not target_student_id:
                 raise HTTPException(status_code=400, detail="Cannot verify signature without student reference.")
-            expected_sig = generate_gateway_signature(order_id, float(amount), target_student_id)
+            expected_sig = generate_gateway_signature(order_id, amount, target_student_id)
             if not hmac.compare_digest(signature, expected_sig):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -616,11 +616,11 @@ def auto_match_incoming_payment(
         return (unmatched_pay, False)
 
     # 5. Overpayment guard
-    rem_due = target_ins.amount - target_ins.paid_amount
+    rem_due = to_decimal(target_ins.amount) - to_decimal(target_ins.paid_amount)
     if amount > rem_due:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Payment amount (₹{float(amount):,.2f}) exceeds instalment remaining balance (₹{float(rem_due):,.2f})."
+            detail=f"Payment amount (₹{amount:,.2f}) exceeds instalment remaining balance (₹{rem_due:,.2f})."
         )
 
     # 6. Process matched payment via record_student_payment

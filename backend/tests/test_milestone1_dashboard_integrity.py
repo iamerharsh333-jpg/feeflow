@@ -23,9 +23,9 @@ def test_dashboard_totals_match_database(client, db_session, admin_token):
     assert data["total_students"] == len(students)
 
     today = datetime.date.today()
-    exp_collected = 0.0
-    exp_outstanding = 0.0
-    exp_overdue = 0.0
+    exp_collected = Decimal("0.00")
+    exp_outstanding = Decimal("0.00")
+    exp_overdue = Decimal("0.00")
     exp_overdue_count = 0
 
     for s in students:
@@ -35,11 +35,11 @@ def test_dashboard_totals_match_database(client, db_session, admin_token):
         overdue_insts = [i for i in s.instalments if i.status != "Paid" and i.due_date < today]
         if overdue_insts:
             exp_overdue_count += 1
-            exp_overdue += sum(float(i.amount - i.paid_amount) for i in overdue_insts)
+            exp_overdue += sum((i.amount - i.paid_amount for i in overdue_insts), Decimal("0.00"))
 
-    assert abs(data["fees_collected"] - round(exp_collected, 2)) < 0.01
-    assert abs(data["outstanding_fees"] - round(exp_outstanding, 2)) < 0.01
-    assert abs(data["overdue_fees"] - round(exp_overdue, 2)) < 0.01
+    assert abs(data["fees_collected"] - float(exp_collected)) < 0.01
+    assert abs(data["outstanding_fees"] - float(exp_outstanding)) < 0.01
+    assert abs(data["overdue_fees"] - float(exp_overdue)) < 0.01
     assert data["overdue_students_count"] == exp_overdue_count
 
 

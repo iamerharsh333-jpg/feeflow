@@ -1,4 +1,5 @@
 import datetime
+from decimal import Decimal
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, Date, DateTime,
     ForeignKey, Text, Numeric, Enum as SQLEnum
@@ -57,7 +58,7 @@ class Student(Base):
     parent_phone = Column(String(20), nullable=False, index=True)
     parent_email = Column(String(100), nullable=True)
     
-    total_fee = Column(Numeric(12, 2), nullable=False, default=0.0)
+    total_fee = Column(Numeric(12, 2, asdecimal=True), nullable=False, default=Decimal("0.00"))
     enrollment_date = Column(Date, default=datetime.date.today)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
@@ -81,8 +82,8 @@ class Instalment(Base):
     student_id = Column(String(50), ForeignKey("students.id"), nullable=False, index=True)
     instalment_number = Column(Integer, nullable=False)
     due_date = Column(Date, nullable=False, index=True)
-    amount = Column(Numeric(12, 2), nullable=False)
-    paid_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
+    amount = Column(Numeric(12, 2, asdecimal=True), nullable=False)
+    paid_amount = Column(Numeric(12, 2, asdecimal=True), nullable=False, default=Decimal("0.00"))
     status = Column(String(30), nullable=False, default="Upcoming") # Paid, Partially Paid, Pending, Overdue, Upcoming
     paid_date = Column(Date, nullable=True)
     receipt_no = Column(String(50), nullable=True)
@@ -99,7 +100,7 @@ class Discount(Base):
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(String(50), ForeignKey("students.id"), nullable=False)
     code = Column(String(50), nullable=False)
-    amount = Column(Numeric(12, 2), nullable=False)
+    amount = Column(Numeric(12, 2, asdecimal=True), nullable=False)
     reason = Column(String(255), nullable=True)
     approved_by = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -116,7 +117,7 @@ class Payment(Base):
     instalment_id = Column(String(50), ForeignKey("instalments.id"), nullable=True)
     centre_id = Column(Integer, ForeignKey("centres.id"), nullable=True)
     
-    amount = Column(Numeric(12, 2), nullable=False)
+    amount = Column(Numeric(12, 2, asdecimal=True), nullable=False)
     payment_date = Column(Date, default=datetime.date.today, nullable=False)
     method = Column(String(50), nullable=False) # Cash, UPI, Bank Transfer, Cheque, Online
     reference_no = Column(String(100), nullable=False, index=True)
@@ -141,11 +142,11 @@ class Receipt(Base):
     student_id = Column(String(50), ForeignKey("students.id"), nullable=False)
     
     date = Column(Date, default=datetime.date.today, nullable=False)
-    base_amount = Column(Numeric(12, 2), nullable=False)
+    base_amount = Column(Numeric(12, 2, asdecimal=True), nullable=False)
     gst_rate = Column(Float, nullable=False, default=18.0)
-    cgst_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
-    sgst_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
-    total_amount = Column(Numeric(12, 2), nullable=False)
+    cgst_amount = Column(Numeric(12, 2, asdecimal=True), nullable=False, default=Decimal("0.00"))
+    sgst_amount = Column(Numeric(12, 2, asdecimal=True), nullable=False, default=Decimal("0.00"))
+    total_amount = Column(Numeric(12, 2, asdecimal=True), nullable=False)
     gst_number = Column(String(50), default="08AAACP1234F1Z5")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
@@ -186,17 +187,17 @@ class RefundRequest(Base):
     course_end_date = Column(Date, nullable=False)
     withdrawal_date = Column(Date, nullable=False)
     withdrawal_reason = Column(Text, nullable=True)
-    amount_paid = Column(Numeric(12, 2), nullable=False)
-    discount_applied = Column(Numeric(12, 2), default=0.0)
+    amount_paid = Column(Numeric(12, 2, asdecimal=True), nullable=False)
+    discount_applied = Column(Numeric(12, 2, asdecimal=True), default=Decimal("0.00"))
     
     total_days = Column(Integer, nullable=False)
     days_attended = Column(Integer, nullable=False)
     unused_days = Column(Integer, nullable=False)
-    pro_rata_amount = Column(Numeric(12, 2), nullable=False)
-    processing_fee = Column(Numeric(12, 2), default=0.0)
-    material_fee = Column(Numeric(12, 2), default=0.0)
-    estimated_refund = Column(Numeric(12, 2), nullable=False)
-    approved_refund = Column(Numeric(12, 2), nullable=True)
+    pro_rata_amount = Column(Numeric(12, 2, asdecimal=True), nullable=False)
+    processing_fee = Column(Numeric(12, 2, asdecimal=True), default=Decimal("0.00"))
+    material_fee = Column(Numeric(12, 2, asdecimal=True), default=Decimal("0.00"))
+    estimated_refund = Column(Numeric(12, 2, asdecimal=True), nullable=False)
+    approved_refund = Column(Numeric(12, 2, asdecimal=True), nullable=True)
     
     policy_code = Column(String(50), default="REFUND_STD_POLICY_2026")
     policy_version = Column(String(20), default="v2026.1")

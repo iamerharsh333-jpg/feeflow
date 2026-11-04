@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 import httpx
 from app.config import settings
 from app.models import Student, Attendance, TestScore, CounsellorTask, Instalment, AuditLog
+from app.services.currency import to_decimal, ZERO, PAISE
 
 def rule_based_risk_assessment(
     attendance_pct: float,
@@ -48,7 +49,8 @@ def calculate_student_risk_score(student: Student, db: Session) -> Dict[str, Any
     # --- Signal 1: Financial & Overdue Instalments (0 - 35 points) ---
     overdue_instalments = [i for i in student.instalments if i.status == "Overdue"]
     overdue_count = len(overdue_instalments)
-    overdue_amount = sum(float(i.amount - i.paid_amount) for i in overdue_instalments)
+    overdue_amount_dec = sum((to_decimal(i.amount) - to_decimal(i.paid_amount) for i in overdue_instalments), ZERO)
+    overdue_amount = float(overdue_amount_dec)
     
     max_overdue_days = 0
     for i in overdue_instalments:

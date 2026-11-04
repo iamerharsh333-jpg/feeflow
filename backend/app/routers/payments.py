@@ -16,6 +16,7 @@ from app.services.payments import (
     record_student_payment, match_unmatched_payment,
     create_payment_intent, verify_and_process_simulated_payment
 )
+from app.services.currency import to_decimal, ZERO, PAISE
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -26,7 +27,7 @@ def map_payment_response(p: Payment) -> dict:
         "student_id": p.student_id,
         "student_name": p.student.name if p.student else "Unknown / Unmatched",
         "instalment_id": p.instalment_id,
-        "amount": float(p.amount),
+        "amount": float(to_decimal(p.amount)),
         "payment_date": p.payment_date,
         "method": p.method,
         "reference_no": p.reference_no,
@@ -188,10 +189,11 @@ def create_payment_link(
     if not instalment:
         raise HTTPException(status_code=404, detail="Instalment not found")
 
-    due_amt = float(instalment.amount - instalment.paid_amount)
-    if due_amt <= 0:
+    due_amt_dec = max(ZERO, to_decimal(instalment.amount) - to_decimal(instalment.paid_amount))
+    if due_amt_dec <= ZERO:
         raise HTTPException(status_code=400, detail="Instalment is already fully paid.")
 
+    due_amt = float(due_amt_dec)
     order_id = f"order_{uuid.uuid4().hex[:14]}"
     # Mock / configurable payment URL
     payment_url = f"https://api.feeflow.local/pay/{order_id}?amount={due_amt}"

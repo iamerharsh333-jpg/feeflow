@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import Student, Discount, User, AuditLog
 from app.auth import get_current_user, require_role
 from app.services.fees import get_student_fee_summary, calculate_overdue_days
+from app.services.currency import to_decimal
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/fees", tags=["Fee Ledger"])
@@ -40,8 +41,8 @@ def get_fee_ledger(
             "id": ins.id,
             "number": ins.instalment_number,
             "due_date": ins.due_date,
-            "amount": float(ins.amount),
-            "paid_amount": float(ins.paid_amount),
+            "amount": to_decimal(ins.amount),
+            "paid_amount": to_decimal(ins.paid_amount),
             "status": ins.status,
             "paid_date": ins.paid_date,
             "receipt_no": ins.receipt_no,
@@ -50,7 +51,7 @@ def get_fee_ledger(
 
     discounts = db.query(Discount).filter(Discount.student_id == student.id).all()
     discount_list = [
-        {"code": d.code, "amount": float(d.amount), "reason": d.reason, "approved_by": d.approved_by}
+        {"code": d.code, "amount": to_decimal(d.amount), "reason": d.reason, "approved_by": d.approved_by}
         for d in discounts
     ]
 
@@ -102,5 +103,5 @@ def apply_discount(
         new_values=f"Code: {body.code}, Amount: {body.amount}, Reason: {body.reason}"
     ))
     db.commit()
-    return {"message": "Discount applied successfully", "discount_amount": float(body.amount)}
+    return {"message": "Discount applied successfully", "discount_amount": to_decimal(body.amount)}
 

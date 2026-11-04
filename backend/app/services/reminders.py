@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import List, Optional, Tuple, Dict, Any
 from sqlalchemy.orm import Session
 from app.models import Reminder, Instalment, Student, AutomationLog, AutomationConfig
+from app.services.currency import to_decimal, ZERO, PAISE
 
 logger = logging.getLogger("feeflow.reminders")
 
@@ -96,8 +97,8 @@ def schedule_instalment_reminders(
     offsets = [-3, 0, 3]
     reminders = []
     
-    rem_amount = float(instalment.amount - instalment.paid_amount)
-    is_partial = float(instalment.paid_amount) > 0
+    rem_amount = to_decimal(instalment.amount) - to_decimal(instalment.paid_amount)
+    is_partial = to_decimal(instalment.paid_amount) > ZERO
 
     for offset in offsets:
         sched_date = instalment.due_date + datetime.timedelta(days=offset)
@@ -158,11 +159,11 @@ def schedule_automated_milestone_reminders(
     - Every 7 days thereafter (days 8, 15, 22, 29)
     Uses unique event keys to guarantee complete idempotency.
     """
-    rem_amount = float(instalment.amount - instalment.paid_amount)
-    if rem_amount <= 0 or instalment.status == "Paid":
+    rem_amount = to_decimal(instalment.amount) - to_decimal(instalment.paid_amount)
+    if rem_amount <= ZERO or instalment.status == "Paid":
         return []
 
-    is_partial = float(instalment.paid_amount) > 0
+    is_partial = to_decimal(instalment.paid_amount) > ZERO
     reminders = []
     lang = "en"
 
@@ -274,8 +275,8 @@ def run_automatic_reminder_cycle(db: Session, target_date: Optional[datetime.dat
             continue
 
         # For partial payments, recompute remaining balance immediately before sending
-        remaining_due = float(instalment.amount - instalment.paid_amount)
-        if remaining_due <= 0:
+        remaining_due = to_decimal(instalment.amount) - to_decimal(instalment.paid_amount)
+        if remaining_due <= ZERO:
             rem.status = "Cancelled"
             cancelled_count += 1
             continue
@@ -297,7 +298,7 @@ def run_automatic_reminder_cycle(db: Session, target_date: Optional[datetime.dat
                 due_date=instalment.due_date,
                 parent_name=rem.student.parent_name if rem.student else "Parent",
                 lang=rem.lang,
-                is_partial=(float(instalment.paid_amount) > 0),
+                is_partial=(to_decimal(instalment.paid_amount) > ZERO),
                 stage_code=stage_code
             )
 

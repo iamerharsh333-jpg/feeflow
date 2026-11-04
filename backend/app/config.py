@@ -1,4 +1,5 @@
 import os
+from decimal import Decimal
 from typing import Optional
 
 # Load .env file automatically if present
@@ -49,6 +50,6 @@ class Settings:
     MESSAGE_PROVIDER: str = os.getenv("MESSAGE_PROVIDER", "mock")
     
     # Taxation (Configurable GST rate percentage)
-    GST_RATE: float = float(os.getenv("GST_RATE", "18.0"))
+    GST_RATE: Decimal = Decimal(os.getenv("GST_RATE", "18.0"))
 
 settings = Settings()

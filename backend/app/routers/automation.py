@@ -15,6 +15,7 @@ from app.services.automation import (
 from app.services.reminders import retry_failed_reminders
 from app.services.payments import auto_match_incoming_payment
 from app.services.risk import dismiss_risk_task
+from app.services.currency import to_decimal, ZERO
 
 router = APIRouter(prefix="/automation", tags=["Automation Engine"])
 
@@ -132,7 +133,7 @@ def auto_match_payment(
         "is_matched": is_matched,
         "student_id": payment.student_id,
         "instalment_id": payment.instalment_id,
-        "amount": float(payment.amount),
+        "amount": float(to_decimal(payment.amount)),
         "message": "Payment automatically matched and fee ledger updated." if is_matched else "Payment saved as Unmatched in accounts reconciliation queue."
     }
 
@@ -201,7 +202,7 @@ def simulate_automation_test_run(
 
     for ins in active_instalments:
         student = ins.student
-        rem_due = float(ins.amount - ins.paid_amount)
+        rem_due = float(max(ZERO, to_decimal(ins.amount) - to_decimal(ins.paid_amount)))
         centre_name = student.centre.name if student.centre else "Jaipur Main"
 
         for offset, stage_code, label in AUTOMATION_REMINDER_OFFSETS:

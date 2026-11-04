@@ -11,6 +11,7 @@ from app.schemas import (
 )
 from app.auth import require_role
 from app.services.risk import assess_student_risk
+from app.services.currency import to_decimal, ZERO
 
 router = APIRouter(prefix="/risk", tags=["Risk & Counselling"])
 
@@ -88,11 +89,12 @@ def list_counsellor_tasks(
             att_pct = float(evidence_dict.get("attendance_rate", 85.0))
             score_trend = str(evidence_dict.get("test_score_trend", "Stable"))
 
-        outstanding = sum(
-            float(i.amount - i.paid_amount)
+        outstanding_dec = sum(
+            (max(ZERO, to_decimal(i.amount) - to_decimal(i.paid_amount))
             for i in student.instalments
-            if i.status == "Overdue"
-        ) if student else 0.0
+            if i.status == "Overdue"), ZERO
+        ) if student else ZERO
+        outstanding = float(outstanding_dec)
 
         results.append(CounsellorTaskResponse(
             id=t.id,

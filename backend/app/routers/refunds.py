@@ -17,6 +17,7 @@ from app.services.refunds import (
     approve_refund_request, reject_refund_request,
     process_simulated_refund
 )
+from app.services.currency import to_decimal, ZERO, PAISE
 
 router = APIRouter(prefix="/refunds", tags=["Refund Calculator & Requests"])
 
@@ -27,22 +28,22 @@ def estimate_refund(
 ):
     student = db.query(Student).filter(Student.id == body.student_id).first()
     amount_paid = body.amount_paid
-    discount_applied = Decimal("0.0")
+    discount_applied = ZERO
     student_name = None
     
     if student:
         student_name = student.name
-        discount_applied = sum(Decimal(str(d.amount)) for d in student.discounts) if student.discounts else Decimal("0.0")
-        if amount_paid is None or amount_paid <= Decimal("0.0"):
+        discount_applied = sum((to_decimal(d.amount) for d in student.discounts), ZERO) if student.discounts else ZERO
+        if amount_paid is None or to_decimal(amount_paid) <= ZERO:
             payments = db.query(Payment).filter(
                 Payment.student_id == student.id,
                 Payment.status.in_(["Success", "Paid"])
             ).all()
-            actual_paid = sum(Decimal(str(p.amount)) for p in payments)
-            amount_paid = actual_paid if actual_paid > Decimal("0.0") else student.total_fee
+            actual_paid = sum((to_decimal(p.amount) for p in payments), ZERO)
+            amount_paid = actual_paid if actual_paid > ZERO else to_decimal(student.total_fee)
     
     if amount_paid is None:
-        amount_paid = Decimal("50000.0")
+        amount_paid = Decimal("50000.00")
 
     calc = calculate_pro_rata_refund(
         course_start_date=body.course_start_date,
@@ -105,7 +106,7 @@ def submit_refund_for_review(
             db=db,
             refund_id=req.id,
             student=student,
-            amount=float(req.estimated_refund)
+            amount=to_decimal(req.estimated_refund)
         )
         db.commit()
     except Exception:
@@ -274,7 +275,7 @@ def approve_refund(
             db=db,
             refund_id=request_id,
             student=req.student,
-            amount=float(approved.approved_refund),
+            amount=to_decimal(approved.approved_refund),
             new_status="Approved",
             reason=body.reason
         )
@@ -324,7 +325,7 @@ def reject_refund(
             db=db,
             refund_id=request_id,
             student=req.student,
-            amount=float(req.estimated_refund or 0.0),
+            amount=to_decimal(req.estimated_refund),
             new_status="Rejected",
             reason=body.reason
         )
@@ -371,7 +372,7 @@ def process_refund_payout(
             db=db,
             refund_id=request_id,
             student=req.student,
-            amount=float(processed.approved_refund or 0.0),
+            amount=to_decimal(processed.approved_refund),
             new_status="Processed"
         )
         db.commit()

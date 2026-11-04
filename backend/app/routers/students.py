@@ -6,6 +6,7 @@ from app.models import Student, Centre, User
 from app.schemas import StudentResponse, StudentCreate
 from app.auth import get_current_user, require_role
 from app.services.fees import get_student_fee_summary, create_default_instalments, calculate_overdue_days
+from app.services.currency import to_decimal
 
 router = APIRouter(prefix="/students", tags=["Students"])
 
@@ -26,8 +27,8 @@ def map_student_response(s: Student, db: Session) -> dict:
             "student_id": ins.student_id,
             "instalment_number": ins.instalment_number,
             "due_date": ins.due_date,
-            "amount": float(ins.amount),
-            "paid_amount": float(ins.paid_amount),
+            "amount": float(to_decimal(ins.amount)),
+            "paid_amount": float(to_decimal(ins.paid_amount)),
             "status": ins.status,
             "paid_date": ins.paid_date,
             "receipt_no": ins.receipt_no,
