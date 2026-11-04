@@ -5,12 +5,13 @@ import { cn } from '../../utils/helpers';
 import {
   LayoutDashboard, Users, BookOpen, CreditCard, Bell, Clock,
   Calculator, BarChart3, ShieldAlert, Settings, ChevronRight,
-  LogOut, User, ChevronDown, X, Menu, Cpu,
+  LogOut, User, ChevronDown, X, Menu, Cpu, Calendar,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/accounts/dashboard', label: 'Overview', icon: LayoutDashboard },
   { to: '/students', label: 'Students', icon: Users },
+  { to: '/deadlines', label: 'Upcoming Deadlines', icon: Calendar },
   { to: '/fee-ledger', label: 'Fee Ledger', icon: BookOpen },
   { to: '/payments', label: 'Payments', icon: CreditCard },
   { to: '/reminders', label: 'Reminders', icon: Clock },

@@ -35,6 +35,10 @@ class AutoMatchPaymentRequest(BaseModel):
     payment_date: Optional[str] = None
     notes: Optional[str] = None
 
+class AutomationTestRunRequest(BaseModel):
+    simulation_date: Optional[str] = None
+
+
 @router.get("/status")
 def read_automation_status(
     current_user: User = Depends(require_role("accounts_executive", "admin")),
@@ -153,4 +157,125 @@ def dismiss_task(
         "reviewed_at": task.reviewed_at.isoformat() if task.reviewed_at else None,
         "message": "Counsellor task successfully dismissed as false positive."
     }
+
+@router.post("/test-run")
+def simulate_automation_test_run(
+    body: Optional[AutomationTestRunRequest] = None,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    """
+    Admin-restricted manual simulation test-run:
+    - Scans all active instalments against statutory milestone rules.
+    - Dry-run: does not dispatch actual messages or duplicate database alerts.
+    - Accurately details which milestones trigger, balances calculated, and escalation routing.
+    """
+    from app.services.reminders import AUTOMATION_REMINDER_OFFSETS, get_kolkata_today
+    from app.models import Instalment, Student
+
+    target_date = get_kolkata_today()
+    if body and body.simulation_date:
+        try:
+            target_date = datetime.date.fromisoformat(body.simulation_date)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid simulation_date format: {body.simulation_date}. Expected YYYY-MM-DD."
+            )
+
+    active_instalments = db.query(Instalment).join(Student, Instalment.student_id == Student.id).filter(
+        Instalment.status != "Paid",
+        Instalment.paid_amount < Instalment.amount
+    ).all()
+
+    triggers = []
+    escalations = []
+    summary_counts = {
+        "UPCOMING_7D": 0,
+        "UPCOMING_3D": 0,
+        "DUE_TODAY": 0,
+        "OVERDUE_1D": 0,
+        "OVERDUE_7D": 0,
+        "OVERDUE_30D": 0
+    }
+
+    for ins in active_instalments:
+        student = ins.student
+        rem_due = float(ins.amount - ins.paid_amount)
+        centre_name = student.centre.name if student.centre else "Jaipur Main"
+
+        for offset, stage_code, label in AUTOMATION_REMINDER_OFFSETS:
+            sched_date = ins.due_date + datetime.timedelta(days=offset)
+            if sched_date == target_date:
+                summary_counts[stage_code] = summary_counts.get(stage_code, 0) + 1
+
+                notifications = [
+                    {
+                        "recipient": student.parent_phone,
+                        "role": "parent",
+                        "channel": "whatsapp",
+                        "type": "FEE_OVERDUE" if offset > 0 else "FEE_UPCOMING"
+                    },
+                    {
+                        "recipient": f"centre_{student.centre_id}_staff",
+                        "role": "accounts_executive",
+                        "channel": "in_app",
+                        "type": "STAFF_DEADLINE_ALERT"
+                    }
+                ]
+
+                if stage_code == "OVERDUE_7D":
+                    escalations.append({
+                        "level": "Centre Manager Escalation (7 Days Overdue)",
+                        "recipient": f"centre_{student.centre_id}_manager",
+                        "student_id": student.id,
+                        "student_name": student.name,
+                        "amount": rem_due
+                    })
+                    notifications.append({
+                        "recipient": f"centre_{student.centre_id}_manager",
+                        "role": "accounts_executive",
+                        "channel": "in_app",
+                        "type": "OVERDUE_ESCALATION"
+                    })
+                elif stage_code == "OVERDUE_30D":
+                    escalations.append({
+                        "level": "Critical Admin Escalation (30 Days Overdue)",
+                        "recipient": "admin_escalation",
+                        "student_id": student.id,
+                        "student_name": student.name,
+                        "amount": rem_due
+                    })
+                    notifications.append({
+                        "recipient": "admin_escalation",
+                        "role": "admin",
+                        "channel": "in_app",
+                        "type": "OVERDUE_CRITICAL_ESCALATION"
+                    })
+
+                triggers.append({
+                    "instalment_id": ins.id,
+                    "student_id": student.id,
+                    "student_name": student.name,
+                    "centre_name": centre_name,
+                    "batch": student.batch,
+                    "due_date": ins.due_date.isoformat(),
+                    "remaining_balance": round(rem_due, 2),
+                    "stage_code": stage_code,
+                    "stage_label": label,
+                    "event_key": f"{ins.id}_{stage_code}",
+                    "notifications_to_send": notifications
+                })
+
+    return {
+        "status": "SIMULATION_SUCCESS",
+        "dry_run": True,
+        "simulation_date": target_date.isoformat(),
+        "active_instalments_scanned": len(active_instalments),
+        "milestones_triggered": len(triggers),
+        "triggers": triggers,
+        "escalations": escalations,
+        "summary": summary_counts
+    }
+
 

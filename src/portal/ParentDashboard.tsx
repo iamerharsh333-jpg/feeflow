@@ -601,9 +601,21 @@ export default function ParentDashboard() {
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5">
                           Due Date: <strong>{formatDate(ins.due_date || ins.dueDate)}</strong>
-                          {ins.overdue_days > 0 && (
-                            <span className="text-red-600 ml-1 font-semibold">({ins.overdue_days} days overdue)</span>
-                          )}
+                          {!isPaid && (() => {
+                            const dDate = new Date(ins.due_date || ins.dueDate);
+                            const tDate = new Date();
+                            tDate.setHours(0, 0, 0, 0);
+                            dDate.setHours(0, 0, 0, 0);
+                            const diffDays = Math.round((dDate.getTime() - tDate.getTime()) / (1000 * 3600 * 24));
+                            if (diffDays < 0 || ins.overdue_days > 0) {
+                              const ov = Math.max(ins.overdue_days || 0, Math.abs(diffDays));
+                              return <span className="text-red-600 ml-1.5 font-bold">({ov} days overdue)</span>;
+                            } else if (diffDays === 0) {
+                              return <span className="text-amber-700 ml-1.5 font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">Due Today</span>;
+                            } else {
+                              return <span className="text-blue-600 ml-1.5 font-medium">({diffDays} days remaining)</span>;
+                            }
+                          })()}
                         </p>
                         {isPaid && ins.paid_date && (
                           <p className="text-xs text-emerald-600 mt-0.5">

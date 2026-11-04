@@ -11,6 +11,7 @@ class UserRole(str):
     STUDENT = "student"
     ACCOUNTS_EXECUTIVE = "accounts_executive"
     ADMIN = "admin"
+    COUNSELLOR = "counsellor"
 
 class Centre(Base):
     __tablename__ = "centres"

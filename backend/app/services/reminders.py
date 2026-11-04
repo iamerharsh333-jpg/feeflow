@@ -8,6 +8,18 @@ from app.models import Reminder, Instalment, Student, AutomationLog, AutomationC
 
 logger = logging.getLogger("feeflow.reminders")
 
+try:
+    import zoneinfo
+    KOLKATA_TZ = zoneinfo.ZoneInfo("Asia/Kolkata")
+except Exception:
+    KOLKATA_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
+def get_kolkata_today() -> datetime.date:
+    return datetime.datetime.now(KOLKATA_TZ).date()
+
+def get_kolkata_now() -> datetime.datetime:
+    return datetime.datetime.now(KOLKATA_TZ)
+
 # Automation reminder schedule offsets: (days_offset_relative_to_due_date, stage_code, label)
 # Negative = days before due date, 0 = on due date, Positive = days overdue
 AUTOMATION_REMINDER_OFFSETS: List[Tuple[int, str, str]] = [
@@ -15,10 +27,8 @@ AUTOMATION_REMINDER_OFFSETS: List[Tuple[int, str, str]] = [
     (-3, "UPCOMING_3D", "3-Day Upcoming Reminder"),
     (0, "DUE_TODAY", "Due-Date Reminder"),
     (1, "OVERDUE_1D", "1-Day Overdue Notice"),
-    (8, "OVERDUE_8D", "7-Day Overdue Follow-up 1"),
-    (15, "OVERDUE_15D", "14-Day Overdue Follow-up 2"),
-    (22, "OVERDUE_22D", "21-Day Overdue Follow-up 3"),
-    (29, "OVERDUE_29D", "28-Day Overdue Follow-up 4"),
+    (7, "OVERDUE_7D", "7-Day Overdue Notice"),
+    (30, "OVERDUE_30D", "30-Day Critical Overdue Notice"),
 ]
 
 def generate_reminder_message(
@@ -161,10 +171,7 @@ def schedule_automated_milestone_reminders(
         event_key = f"{instalment.id}_{stage_code}"
         
         # Check for existing reminder by unique event_key
-        existing = db.query(Reminder).filter(
-            (Reminder.event_key == event_key) |
-            ((Reminder.instalment_id == instalment.id) & (Reminder.scheduled_date == sched_date) & Reminder.status.in_(["Scheduled", "Sent"]))
-        ).first()
+        existing = db.query(Reminder).filter(Reminder.event_key == event_key).first()
 
         if existing:
             reminders.append(existing)
@@ -223,7 +230,7 @@ def run_automatic_reminder_cycle(db: Session, target_date: Optional[datetime.dat
     7. Logs execution run in AutomationLog.
     """
     start_time = datetime.datetime.utcnow()
-    today = target_date or datetime.date.today()
+    today = target_date or get_kolkata_today()
     
     # 1. Config Check
     cfg = db.query(AutomationConfig).filter(AutomationConfig.key == "reminder_scheduler_enabled").first()
@@ -231,21 +238,22 @@ def run_automatic_reminder_cycle(db: Session, target_date: Optional[datetime.dat
         logger.info("Automation reminder scheduler is disabled by admin.")
         return {"status": "PAUSED", "items_processed": 0, "message": "Scheduler disabled."}
 
-    # 2. Schedule reminders for all unpaid / upcoming instalments
+    # 2. Schedule reminders for all unpaid / active instalments
     active_instalments = db.query(Instalment).filter(
-        Instalment.status.in_(["Upcoming", "Pending", "Partially Paid", "Overdue"])
+        Instalment.status != "Paid",
+        Instalment.paid_amount < Instalment.amount
     ).all()
 
     scheduled_count = 0
     for ins in active_instalments:
         if ins.student:
-            reminders = schedule_instalment_reminders(
+            milestones = schedule_automated_milestone_reminders(
                 student=ins.student,
                 instalment=ins,
                 db=db,
                 centre_name=ins.student.centre.name if ins.student.centre else "Jaipur Main"
             )
-            scheduled_count += len(reminders)
+            scheduled_count += len(milestones)
 
     # 3. Process Scheduled reminders due on or before today
     due_reminders = db.query(Reminder).filter(
@@ -274,7 +282,13 @@ def run_automatic_reminder_cycle(db: Session, target_date: Optional[datetime.dat
 
         try:
             # Refresh message text with accurate latest remaining balance
-            stage_code = rem.event_key.split("_", 1)[1] if rem.event_key and "_" in rem.event_key else "DUE_TODAY"
+            if rem.event_key and rem.event_key.startswith(f"{rem.instalment_id}_"):
+                stage_code = rem.event_key[len(rem.instalment_id) + 1:]
+            elif rem.event_key and "_" in rem.event_key:
+                stage_code = rem.event_key.split("_", 1)[1]
+            else:
+                stage_code = "DUE_TODAY"
+
             rem.message = generate_reminder_message(
                 student_name=rem.student.name if rem.student else "Student",
                 course=rem.student.course if rem.student else "Course",
@@ -304,6 +318,7 @@ def run_automatic_reminder_cycle(db: Session, target_date: Optional[datetime.dat
                     student_name=rem.student.name if rem.student else "Student",
                     due_date=instalment.due_date.strftime("%d %b %Y")
                 )
+                # 1. Parent Notification
                 create_notification(
                     db=db,
                     event_type=ev_type,
@@ -315,9 +330,76 @@ def run_automatic_reminder_cycle(db: Session, target_date: Optional[datetime.dat
                     lang=rem.lang,
                     related_student_id=rem.student_id,
                     entity_type="instalment",
-                    entity_id=rem.instalment_id,
+                    entity_id=f"{rem.instalment_id}_{stage_code}",
                     channel="whatsapp"
                 )
+
+                # 2. Staff Notification Routing: Notify assigned Accounts Executive for student's centre
+                if rem.student:
+                    student = rem.student
+                    centre_name = student.centre.name if student.centre else "Jaipur Main"
+                    due_str = instalment.due_date.strftime("%d %b %Y")
+                    
+                    if "OVERDUE" in stage_code:
+                        staff_title = f"Overdue Fee Alert ({stage_code.replace('_', ' ')}): {student.name}"
+                        staff_msg = (
+                            f"Student {student.name} (ID: {student.id}, Batch: {student.batch}) at {centre_name} "
+                            f"has instalment #{instalment.instalment_number} of ₹{remaining_due:,.2f} overdue since {due_str}."
+                        )
+                    else:
+                        stage_label = "7 Days" if "7D" in stage_code else ("3 Days" if "3D" in stage_code else "Today")
+                        staff_title = f"Upcoming Deadline ({stage_label}): {student.name}"
+                        staff_msg = (
+                            f"Student {student.name} (ID: {student.id}, Batch: {student.batch}) at {centre_name} "
+                            f"has instalment #{instalment.instalment_number} of ₹{remaining_due:,.2f} due on {due_str}."
+                        )
+
+                    create_notification(
+                        db=db,
+                        event_type="STAFF_DEADLINE_ALERT",
+                        recipient_role="accounts_executive",
+                        recipient_id=f"centre_{student.centre_id}_staff",
+                        centre_id=student.centre_id,
+                        title=staff_title,
+                        message=staff_msg,
+                        lang="en",
+                        related_student_id=student.id,
+                        entity_type="instalment",
+                        entity_id=f"{instalment.id}_{stage_code}_staff",
+                        channel="in_app"
+                    )
+
+                    # 3. Escalation Rules
+                    if stage_code == "OVERDUE_7D":
+                        create_notification(
+                            db=db,
+                            event_type="OVERDUE_ESCALATION",
+                            recipient_role="accounts_executive",
+                            recipient_id=f"centre_{student.centre_id}_manager",
+                            centre_id=student.centre_id,
+                            title=f"[ESCALATION - 7D] Overdue Payment: {student.name}",
+                            message=f"Escalation for {centre_name}: {student.name} ({student.id}, {student.batch}) is 7 days overdue for ₹{remaining_due:,.2f} (Due: {due_str}).",
+                            lang="en",
+                            related_student_id=student.id,
+                            entity_type="instalment",
+                            entity_id=f"{instalment.id}_OVERDUE_7D_manager",
+                            channel="in_app"
+                        )
+                    elif stage_code == "OVERDUE_30D":
+                        create_notification(
+                            db=db,
+                            event_type="OVERDUE_CRITICAL_ESCALATION",
+                            recipient_role="admin",
+                            recipient_id="admin_escalation",
+                            centre_id=student.centre_id,
+                            title=f"[CRITICAL ESCALATION - 30D] Severe Overdue: {student.name}",
+                            message=f"Critical Overdue (30 Days) at {centre_name}: {student.name} ({student.id}, {student.batch}) has outstanding balance of ₹{remaining_due:,.2f} (Due: {due_str}). Immediate intervention required.",
+                            lang="en",
+                            related_student_id=student.id,
+                            entity_type="instalment",
+                            entity_id=f"{instalment.id}_OVERDUE_30D_admin",
+                            channel="in_app"
+                        )
             except Exception as ne:
                 logger.debug(f"Notification creation bypassed: {ne}")
 

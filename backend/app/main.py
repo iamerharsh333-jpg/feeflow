@@ -11,7 +11,7 @@ from app.services.reminders import process_due_reminders
 # Routers
 from app.routers import (
     auth, students, fees, payments, reminders, refunds,
-    dashboard, reports, attendance, tests, risk, consent, receipts, notifications, automation
+    dashboard, reports, attendance, tests, risk, consent, receipts, notifications, automation, deadlines
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -122,6 +122,7 @@ app.include_router(consent.router, prefix=api_v1)
 app.include_router(receipts.router, prefix=api_v1)
 app.include_router(notifications.router, prefix=api_v1)
 app.include_router(automation.router, prefix=api_v1)
+app.include_router(deadlines.router, prefix=api_v1)
 
 @app.get("/health")
 def health_check():

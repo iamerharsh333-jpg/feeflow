@@ -14,12 +14,15 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  const [retrying, setRetrying] = useState<string | null>(null);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [category, setCategory] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('');
 
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  const isStaff = user?.role === 'accounts' || (user as any)?.role === 'accounts_executive' || (user as any)?.role === 'admin' || (user as any)?.role === 'centre_manager';
 
   const fetchNotifications = useCallback(async () => {
     setLoading(true);
@@ -71,19 +74,48 @@ export default function NotificationsPage() {
     }
   };
 
+  const handleRetryNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRetrying(id);
+    try {
+      const updated = await api.retryNotification(id);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, delivery_status: updated.delivery_status || 'delivered' } : n));
+    } catch (err) {
+      console.error('Failed to retry notification delivery:', err);
+    } finally {
+      setRetrying(null);
+    }
+  };
+
+  const handleRetryAllFailed = async () => {
+    setLoading(true);
+    try {
+      await api.retryFailedNotifications();
+      fetchNotifications();
+    } catch (err) {
+      console.error('Failed to retry all failed deliveries:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const failedCount = notifications.filter(n => n.delivery_status === 'failed').length;
+
   const handleNotificationClick = (notif: NotificationItem) => {
     if (!notif.is_read) {
       handleMarkAsRead(notif.id);
     }
-    if (user?.role === 'accounts') {
-      if (notif.event_type.startsWith('PAYMENT') || notif.event_type === 'UNMATCHED_PAYMENT') {
+    if (isStaff) {
+      if (notif.event_type.startsWith('STAFF_DEADLINE') || notif.event_type.startsWith('OVERDUE_ESCALATION')) {
+        navigate('/deadlines');
+      } else if (notif.event_type.startsWith('PAYMENT') || notif.event_type === 'UNMATCHED_PAYMENT') {
         navigate('/payments');
       } else if (notif.event_type.startsWith('REFUND')) {
         navigate('/refund-calculator');
       } else if (notif.event_type === 'HIGH_RISK_DROPOUT') {
         navigate('/risk-counselling');
       } else if (notif.event_type.startsWith('FEE')) {
-        navigate('/reminders');
+        navigate('/deadlines');
       }
     } else if (user?.role === 'parent') {
       navigate('/parent/dashboard');
@@ -101,8 +133,11 @@ export default function NotificationsPage() {
         return <XCircle className="w-5 h-5 text-rose-600" />;
       case 'UNMATCHED_PAYMENT':
         return <CreditCard className="w-5 h-5 text-amber-600" />;
+      case 'STAFF_DEADLINE_ALERT':
       case 'FEE_UPCOMING':
         return <Clock className="w-5 h-5 text-blue-600" />;
+      case 'OVERDUE_ESCALATION':
+      case 'OVERDUE_CRITICAL_ESCALATION':
       case 'FEE_OVERDUE':
         return <AlertCircle className="w-5 h-5 text-red-600" />;
       case 'REFUND_REQUESTED':
@@ -120,10 +155,10 @@ export default function NotificationsPage() {
 
   const categories = [
     { id: 'all', label: 'All Alerts' },
+    { id: 'deadlines', label: 'Deadlines & Dues' },
     { id: 'payments', label: 'Payments' },
     { id: 'refunds', label: 'Refunds' },
-    { id: 'fees', label: 'Fee Dues' },
-    ...(user?.role === 'accounts'
+    ...(isStaff
       ? [{ id: 'risk', label: 'Risk & Ops' }]
       : [])
   ];
@@ -147,6 +182,16 @@ export default function NotificationsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isStaff && failedCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRetryAllFailed}
+              className="flex items-center gap-1.5 text-xs text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Retry All Failed ({failedCount})
+            </Button>
+          )}
           {unreadCount > 0 && (
             <Button
               variant="outline"
@@ -274,10 +319,21 @@ export default function NotificationsPage() {
                   <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md border ${
                     notif.delivery_status === 'delivered'
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : notif.delivery_status === 'failed'
+                      ? 'bg-rose-50 text-rose-700 border-rose-200'
                       : 'bg-amber-50 text-amber-700 border-amber-200'
                   }`}>
-                    Channel: {notif.channel.toUpperCase()} {notif.delivery_status === 'simulated' ? '(Simulated Delivery)' : '(Delivered)'}
+                    Channel: {notif.channel.toUpperCase()} {notif.delivery_status === 'simulated' ? '(Simulated Delivery)' : notif.delivery_status === 'failed' ? '(Delivery Failed)' : '(Delivered)'}
                   </span>
+                  {isStaff && notif.delivery_status === 'failed' && (
+                    <button
+                      onClick={e => handleRetryNotification(notif.id, e)}
+                      disabled={retrying === notif.id}
+                      className="text-[10px] font-semibold text-rose-700 bg-rose-100 hover:bg-rose-200 px-2 py-0.5 rounded border border-rose-300 flex items-center gap-1"
+                    >
+                      <RefreshCw className={`w-2.5 h-2.5 ${retrying === notif.id ? 'animate-spin' : ''}`} /> Retry
+                    </button>
+                  )}
                   {notif.related_student_id && (
                     <span className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md">
                       Student: {notif.related_student_id}

@@ -311,8 +311,70 @@ export const api = {
     });
   },
 
+  retryNotification: (id: string) => {
+    return apiRequest(`/notifications/${encodeURIComponent(id)}/retry`, {
+      method: 'POST',
+    });
+  },
+
+  retryFailedNotifications: () => {
+    return apiRequest<{ retried_notifications: number; retried_reminders: number }>('/notifications/retry-failed', {
+      method: 'POST',
+    });
+  },
+
+  // Deadlines & Visible Milestone Tracking
+  getDeadlines: (params: {
+    category?: string;
+    centre_id?: number;
+    batch?: string;
+    from_date?: string;
+    to_date?: string;
+    status?: string;
+    student_id?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.category) sp.append('category', params.category);
+    if (params.centre_id) sp.append('centre_id', params.centre_id.toString());
+    if (params.batch) sp.append('batch', params.batch);
+    if (params.from_date) sp.append('from_date', params.from_date);
+    if (params.to_date) sp.append('to_date', params.to_date);
+    if (params.status) sp.append('status', params.status);
+    if (params.student_id) sp.append('student_id', params.student_id);
+    if (params.limit) sp.append('limit', params.limit.toString());
+    if (params.offset) sp.append('offset', params.offset.toString());
+    return apiRequest<any[]>(`/deadlines?${sp.toString()}`);
+  },
+
+  getDeadlinesSummary: (centre_id?: number) => {
+    const sp = new URLSearchParams();
+    if (centre_id) sp.append('centre_id', centre_id.toString());
+    return apiRequest<{
+      due_today_count: number;
+      due_in_3d_count: number;
+      due_in_7d_count: number;
+      overdue_count: number;
+      total_upcoming_amount: number;
+      total_overdue_amount: number;
+    }>(`/deadlines/summary?${sp.toString()}`);
+  },
+
+  getCounsellorDeadlines: (status?: string) => {
+    const sp = new URLSearchParams();
+    if (status) sp.append('status', status);
+    return apiRequest<any[]>(`/deadlines/counsellor?${sp.toString()}`);
+  },
+
   // Automation Engine
   getAutomationStatus: () => apiRequest('/automation/status'),
+
+  runAutomationTestRun: (simulation_date?: string) =>
+    apiRequest('/automation/test-run', {
+      method: 'POST',
+      body: JSON.stringify({ simulation_date }),
+    }),
 
   toggleReminderAutomation: (enabled: boolean) =>
     apiRequest('/automation/toggle-reminders', {

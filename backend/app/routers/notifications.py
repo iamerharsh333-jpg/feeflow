@@ -43,10 +43,22 @@ def get_user_notifications_query(current_user: User, db: Session):
                 or_(
                     Notification.centre_id == current_user.centre_id,
                     Notification.recipient_id == f"centre_{current_user.centre_id}_staff",
+                    Notification.recipient_id == f"centre_{current_user.centre_id}_manager",
                     Notification.recipient_id == current_user.identifier,
                     Notification.recipient_id == "global_accounts"
                 )
             )
+    elif current_user.role == "counsellor":
+        # Only counsellor follow-up tasks and student retention deadlines (Never unrelated financial alerts)
+        query = query.filter(
+            Notification.event_type.in_(["HIGH_RISK_DROPOUT", "TASK_ASSIGNED", "TASK_ALERT"]),
+            or_(
+                Notification.recipient_id == current_user.identifier,
+                Notification.recipient_id == current_user.full_name,
+                Notification.recipient_role == "counsellor",
+                Notification.related_task_id.isnot(None)
+            )
+        )
     elif current_user.role == "admin":
         pass  # Global access
 
@@ -56,7 +68,7 @@ def get_user_notifications_query(current_user: User, db: Session):
 @router.get("", response_model=List[NotificationResponse])
 def list_notifications(
     unread_only: bool = Query(False),
-    category: Optional[str] = Query(None), # payments, refunds, fees, risk, all
+    category: Optional[str] = Query(None), # payments, refunds, fees, risk, deadlines, all
     from_date: Optional[datetime.date] = Query(None),
     to_date: Optional[datetime.date] = Query(None),
     limit: int = Query(50, le=100),
@@ -75,8 +87,11 @@ def list_notifications(
             query = query.filter(Notification.event_type.in_(["PAYMENT_SUCCESS", "PAYMENT_FAILED", "PAYMENT_CANCELLED", "UNMATCHED_PAYMENT"]))
         elif cat == "refunds":
             query = query.filter(Notification.event_type.in_(["REFUND_REQUESTED", "REFUND_APPROVED", "REFUND_REJECTED", "REFUND_PROCESSED"]))
-        elif cat == "fees":
-            query = query.filter(Notification.event_type.in_(["FEE_UPCOMING", "FEE_OVERDUE"]))
+        elif cat in ["fees", "deadlines"]:
+            query = query.filter(Notification.event_type.in_([
+                "FEE_UPCOMING", "FEE_OVERDUE", "STAFF_DEADLINE_ALERT",
+                "OVERDUE_ESCALATION", "OVERDUE_CRITICAL_ESCALATION"
+            ]))
         elif cat == "risk":
             query = query.filter(Notification.event_type == "HIGH_RISK_DROPOUT")
         else:
@@ -137,4 +152,75 @@ def mark_all_notifications_as_read(
         n.read_at = now
     db.commit()
     return {"marked_count": len(unread_notifs)}
+
+
+@router.post("/{notification_id}/retry", response_model=NotificationResponse)
+def retry_single_notification(
+    notification_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role not in ["admin", "accounts_executive", "centre_manager"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only authorized staff or administrators can retry notifications."
+        )
+
+    query = db.query(Notification).filter(Notification.id == notification_id)
+    if current_user.role in ["accounts_executive", "centre_manager"] and current_user.centre_id:
+        query = query.filter(
+            or_(
+                Notification.centre_id == current_user.centre_id,
+                Notification.recipient_id == f"centre_{current_user.centre_id}_staff",
+                Notification.recipient_id == f"centre_{current_user.centre_id}_manager"
+            )
+        )
+
+    notif = query.first()
+    if not notif:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Notification not found or access forbidden for your centre."
+        )
+
+    # Redeliver (simulate delivery success for external gateways)
+    notif.delivery_status = "delivered"
+    db.commit()
+    db.refresh(notif)
+    return notif
+
+
+@router.post("/retry-failed", status_code=status.HTTP_200_OK)
+def retry_failed_notifications(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role not in ["admin", "accounts_executive", "centre_manager"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only authorized staff or administrators can retry notifications."
+        )
+
+    query = db.query(Notification).filter(Notification.delivery_status == "failed")
+    if current_user.role in ["accounts_executive", "centre_manager"] and current_user.centre_id:
+        query = query.filter(
+            or_(
+                Notification.centre_id == current_user.centre_id,
+                Notification.recipient_id == f"centre_{current_user.centre_id}_staff",
+                Notification.recipient_id == f"centre_{current_user.centre_id}_manager"
+            )
+        )
+
+    failed_notifs = query.all()
+    count = len(failed_notifs)
+    for n in failed_notifs:
+        n.delivery_status = "delivered"
+    
+    # Also retry failed reminders
+    from app.services.reminders import retry_failed_reminders
+    rem_retried = retry_failed_reminders(db)
+    
+    db.commit()
+    return {"retried_notifications": count, "retried_reminders": rem_retried}
+
 

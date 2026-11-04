@@ -14,6 +14,7 @@ import RiskCounselling from './pages/RiskCounselling';
 import Settings from './pages/Settings';
 import NotificationsPage from './pages/NotificationsPage';
 import AutomationPage from './pages/AutomationPage';
+import DeadlinesPage from './pages/DeadlinesPage';
 import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
 import ParentDashboard from './portal/ParentDashboard';
@@ -42,6 +43,7 @@ export default function App() {
             <Route element={<RequireAuth roles={['accounts']}><ErrorBoundary><AppLayout /></ErrorBoundary></RequireAuth>}>
               <Route path="/accounts/dashboard" element={<Overview />} />
               <Route path="/students" element={<Students />} />
+              <Route path="/deadlines" element={<DeadlinesPage />} />
               <Route path="/fee-ledger" element={<FeeLedger />} />
               <Route path="/payments" element={<Payments />} />
               <Route path="/reminders" element={<Reminders />} />
