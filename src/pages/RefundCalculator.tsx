@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, Button, Input, Badge, Modal, StatCard, Table, EmptyState } from '../components/ui';
-import { formatCurrency, formatDate, daysBetween } from '../utils/helpers';
-import { Calculator, AlertTriangle, Download, CheckCircle, XCircle, Clock, Send, ShieldCheck, DollarSign } from 'lucide-react';
+import { formatCurrency, formatDate } from '../utils/helpers';
+import { Calculator, AlertTriangle, CheckCircle, Clock, Send, DollarSign } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { api } from '../utils/api';
 
@@ -211,8 +211,7 @@ export default function RefundCalculator() {
     }
   };
 
-  // KPI calculations
-  const pendingCount = requests.filter(r => r.status === 'Pending Review').length;
+  const pendingCount = requests.filter(r => r.status === 'Pending Review' || r.status === 'Submitted').length;
   const approvedCount = requests.filter(r => r.status === 'Approved').length;
   const overdueCount = requests.filter(r => r.is_overdue).length;
   const processedCount = requests.filter(r => r.status === 'Processed').length;
@@ -222,17 +221,17 @@ export default function RefundCalculator() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Student Refund Management</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Published Policy: <span className="font-semibold text-slate-700">REFUND_STD_POLICY_2026 (v2026.1)</span> · Statutory 10-day processing deadline
+          <h1 className="text-xl font-bold text-[#20283A] tracking-tight">Student Refund Management</h1>
+          <p className="text-xs text-[#718096] mt-1 font-normal">
+            Published Policy: <span className="font-semibold text-[#20283A]">REFUND_STD_POLICY_2026 (v2026.1)</span> · Statutory 10-day processing deadline
           </p>
         </div>
 
-        <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
           <button
             onClick={() => setActiveTab('queue')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-              activeTab === 'queue' ? 'bg-white shadow-xs text-indigo-600 font-bold' : 'text-slate-600 hover:text-slate-900'
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
+              activeTab === 'queue' ? 'bg-[#20283A] text-white shadow-xs' : 'bg-white text-[#718096] border border-[#E3E6E9] hover:bg-slate-50'
             }`}
           >
             Refund Requests & Queue ({requests.length})
@@ -242,8 +241,8 @@ export default function RefundCalculator() {
               setActiveTab('calculator');
               if (!calcResult) runCalculation();
             }}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-              activeTab === 'calculator' ? 'bg-white shadow-xs text-indigo-600 font-bold' : 'text-slate-600 hover:text-slate-900'
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
+              activeTab === 'calculator' ? 'bg-[#20283A] text-white shadow-xs' : 'bg-white text-[#718096] border border-[#E3E6E9] hover:bg-slate-50'
             }`}
           >
             Refund Calculator & New Request
@@ -253,59 +252,62 @@ export default function RefundCalculator() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Pending Review" value={pendingCount.toString()} icon={<Clock className="w-5 h-5" />} accent="amber" />
-        <StatCard label="Approved (Ready)" value={approvedCount.toString()} icon={<CheckCircle className="w-5 h-5" />} accent="indigo" />
-        <StatCard label="Overdue Processing" value={overdueCount.toString()} icon={<AlertTriangle className="w-5 h-5" />} accent="red" />
-        <StatCard label="Processed (Paid Out)" value={processedCount.toString()} icon={<DollarSign className="w-5 h-5" />} accent="green" />
+        <StatCard label="Pending Review" value={pendingCount.toString()} icon={<Clock className="w-5 h-5 text-amber-600" />} accent="amber" />
+        <StatCard label="Approved (Ready)" value={approvedCount.toString()} icon={<CheckCircle className="w-5 h-5 text-emerald-600" />} accent="green" />
+        <StatCard label="Overdue Processing" value={overdueCount.toString()} icon={<AlertTriangle className="w-5 h-5 text-[#BA2525]" />} accent="red" />
+        <StatCard label="Processed (Paid Out)" value={processedCount.toString()} icon={<DollarSign className="w-5 h-5 text-[#79A9D1]" />} accent="blue" />
       </div>
 
       {/* TAB 1: Queue */}
       {activeTab === 'queue' && (
-        <Card className="overflow-hidden">
-          <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">Refund Requests Queue</h2>
-            <Button size="sm" variant="outline" onClick={fetchRequests} disabled={loading}>
+        <Card className="rounded-2xl border border-[#E3E6E9] bg-white overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+          <div className="px-5 py-4 bg-slate-50/75 border-b border-[#E3E6E9] flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-[#20283A]">Refund Requests Queue</h2>
+              <p className="text-xs text-[#718096]">Submissions awaiting accounts executive decision and audit justification</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={fetchRequests} disabled={loading} className="text-xs border-[#E3E6E9] text-[#20283A]">
               Refresh Queue
             </Button>
           </div>
 
           {requests.length === 0 ? (
-            <EmptyState icon={<Calculator className="w-10 h-10" />} title="No refund requests found" description="Use the calculator to submit a new refund request for review." />
+            <EmptyState icon={<Calculator className="w-10 h-10 text-[#718096]/40" />} title="No refund requests found" description="Use the calculator to submit a new refund request for review." />
           ) : (
             <div className="overflow-x-auto">
               <Table headers={['Student', 'Withdrawal Date', '10-Day Deadline', 'Amount Paid', 'Est. / Approved', 'Policy', 'Status', 'Actions']}>
                 {requests.map(r => (
-                  <tr key={r.id} className="hover:bg-slate-50/70 transition-colors">
+                  <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="px-4 py-3">
-                      <p className="text-sm font-semibold text-slate-900">{r.student_name}</p>
-                      <p className="text-xs text-slate-500">{r.student_id} · {r.centre_name || 'N/A'}</p>
+                      <p className="text-sm font-semibold text-[#20283A]">{r.student_name}</p>
+                      <p className="text-xs text-[#718096]">{r.student_id} · {r.centre_name || 'N/A'}</p>
                     </td>
 
-                    <td className="px-4 py-3 text-xs text-slate-700">
+                    <td className="px-4 py-3 text-xs text-[#20283A] font-medium">
                       {formatDate(r.withdrawal_date)}
                     </td>
 
                     <td className="px-4 py-3">
                       <div className="space-y-1">
-                        <span className="text-xs font-medium text-slate-800 block">
+                        <span className="text-xs font-semibold text-[#20283A] block">
                           {formatDate(r.processing_deadline || '')}
                         </span>
                         {r.is_overdue ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">
-                            <AlertTriangle className="w-3 h-3 text-red-600" />
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-[#BA2525] border border-rose-200">
+                            <AlertTriangle className="w-3 h-3 text-[#BA2525]" />
                             Overdue ({Math.abs(r.days_remaining || 0)}d past)
                           </span>
-                        ) : r.status in { 'Pending Review': 1, 'Approved': 1 } ? (
-                          <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                        ) : r.status in { 'Pending Review': 1, 'Approved': 1, 'Submitted': 1 } ? (
+                          <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                             {r.days_remaining} day(s) remaining
                           </span>
                         ) : (
-                          <span className="text-[10px] text-slate-400">Completed</span>
+                          <span className="text-[10px] text-[#718096]">Completed</span>
                         )}
                       </div>
                     </td>
 
-                    <td className="px-4 py-3 text-xs font-semibold text-slate-900">
+                    <td className="px-4 py-3 text-xs font-bold text-[#20283A]">
                       {formatCurrency(r.amount_paid)}
                     </td>
 
@@ -313,13 +315,13 @@ export default function RefundCalculator() {
                       <p className="text-xs font-bold text-emerald-700">
                         {r.approved_refund ? formatCurrency(r.approved_refund) : formatCurrency(r.estimated_refund)}
                       </p>
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-[10px] text-[#718096]">
                         {r.approved_refund ? 'Approved' : 'Estimate'}
                       </span>
                     </td>
 
-                    <td className="px-4 py-3 text-xs text-slate-600">
-                      <span className="font-mono text-[10px] bg-slate-100 px-1.5 py-0.5 rounded">
+                    <td className="px-4 py-3 text-xs text-[#718096]">
+                      <span className="font-mono text-[10px] bg-slate-100 px-2 py-0.5 rounded border border-[#E3E6E9]">
                         {r.policy_version || 'v2026.1'}
                       </span>
                     </td>
@@ -330,11 +332,11 @@ export default function RefundCalculator() {
 
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <Button size="sm" variant="ghost" onClick={() => setViewBreakdownItem(r)} className="text-xs">
+                        <Button size="sm" variant="ghost" onClick={() => setViewBreakdownItem(r)} className="text-xs text-[#718096] hover:text-[#20283A]">
                           Breakdown
                         </Button>
 
-                        {r.status === 'Pending Review' && (
+                        {(r.status === 'Pending Review' || r.status === 'Submitted') && (
                           <>
                             <Button
                               size="sm"
@@ -349,7 +351,7 @@ export default function RefundCalculator() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="text-xs text-red-600 hover:bg-red-50 border-red-200"
+                              className="text-xs text-[#BA2525] hover:bg-rose-50 border-rose-200"
                               onClick={() => {
                                 setRejectModalItem(r);
                                 setRejectionReason('');
@@ -363,7 +365,7 @@ export default function RefundCalculator() {
                         {r.status === 'Approved' && (
                           <Button
                             size="sm"
-                            className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1"
+                            className="text-xs bg-[#E95435] hover:bg-[#D84527] text-white flex items-center gap-1"
                             onClick={() => handleSimulatePayout(r)}
                           >
                             <DollarSign className="w-3 h-3" /> Payout (Sim)
@@ -371,7 +373,7 @@ export default function RefundCalculator() {
                         )}
 
                         {r.status === 'Processed' && (
-                          <span className="text-[10px] font-mono text-slate-400 block max-w-[90px] truncate" title={r.payout_reference}>
+                          <span className="text-[10px] font-mono text-[#718096] block max-w-[90px] truncate" title={r.payout_reference}>
                             {r.payout_reference}
                           </span>
                         )}
@@ -388,11 +390,11 @@ export default function RefundCalculator() {
       {/* TAB 2: Calculator & Submission Form */}
       {activeTab === 'calculator' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <Card className="p-5">
-            <h2 className="text-sm font-semibold text-slate-900 mb-1 flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-indigo-600" /> Pro-Rata Refund Calculator
+          <Card className="p-5 rounded-2xl border border-[#E3E6E9] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+            <h2 className="text-sm font-bold text-[#20283A] mb-1 flex items-center gap-2">
+              <Calculator className="w-4 h-4 text-[#79A9D1]" /> Pro-Rata Refund Calculator
             </h2>
-            <p className="text-xs text-slate-500 mb-4">Input student enrolment and withdrawal details to compute eligible refund.</p>
+            <p className="text-xs text-[#718096] mb-4">Input student enrolment and withdrawal details to compute eligible refund.</p>
 
             <form onSubmit={runCalculation} className="space-y-3.5">
               <Input
@@ -463,76 +465,76 @@ export default function RefundCalculator() {
                 />
               </div>
 
-              <Button type="submit" disabled={calculating} className="w-full justify-center">
-                <Calculator className="w-4 h-4" /> Calculate Eligible Refund
+              <Button type="submit" disabled={calculating} className="w-full justify-center bg-[#E95435] hover:bg-[#D84527] text-white">
+                <Calculator className="w-4 h-4 mr-1.5" /> Calculate Eligible Refund
               </Button>
             </form>
           </Card>
 
           {/* Calculator Breakdown Card */}
           {calcResult ? (
-            <Card className="p-5 flex flex-col justify-between">
+            <Card className="p-5 flex flex-col justify-between rounded-2xl border border-[#E3E6E9] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
               <div>
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+                <div className="flex items-center justify-between border-b border-[#E3E6E9] pb-3 mb-3">
                   <div>
-                    <h2 className="text-sm font-bold text-slate-900">Calculation Breakdown</h2>
-                    <span className="text-[10px] font-mono text-slate-400">Policy: {calcResult.policy_code} ({calcResult.policy_version})</span>
+                    <h2 className="text-sm font-bold text-[#20283A]">Calculation Breakdown</h2>
+                    <span className="text-[10px] font-mono text-[#718096]">Policy: {calcResult.policy_code} ({calcResult.policy_version})</span>
                   </div>
                   <Badge status={calcResult.deadline_met ? 'Active' : 'Overdue'} />
                 </div>
 
                 <div className="space-y-2.5 text-xs">
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-500">Total Course Duration</span>
-                    <span className="font-semibold text-slate-900">{calcResult.total_days} days</span>
+                  <div className="flex justify-between py-1 border-b border-[#E3E6E9]">
+                    <span className="text-[#718096]">Total Course Duration</span>
+                    <span className="font-semibold text-[#20283A]">{calcResult.total_days} days</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-500">Days Attended</span>
-                    <span className="font-semibold text-slate-900">{calcResult.days_attended} days</span>
+                  <div className="flex justify-between py-1 border-b border-[#E3E6E9]">
+                    <span className="text-[#718096]">Days Attended</span>
+                    <span className="font-semibold text-[#20283A]">{calcResult.days_attended} days</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-500">Unused Duration</span>
-                    <span className="font-semibold text-slate-900">{calcResult.unused_days} days</span>
+                  <div className="flex justify-between py-1 border-b border-[#E3E6E9]">
+                    <span className="text-[#718096]">Unused Duration</span>
+                    <span className="font-semibold text-[#20283A]">{calcResult.unused_days} days</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-500">Total Amount Paid</span>
-                    <span className="font-semibold text-slate-900">{formatCurrency(calcResult.amount_paid)}</span>
+                  <div className="flex justify-between py-1 border-b border-[#E3E6E9]">
+                    <span className="text-[#718096]">Total Amount Paid</span>
+                    <span className="font-semibold text-[#20283A]">{formatCurrency(calcResult.amount_paid)}</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-500">Pro-Rata Eligible Amount</span>
-                    <span className="font-semibold text-slate-900">{formatCurrency(calcResult.pro_rata_refund)}</span>
+                  <div className="flex justify-between py-1 border-b border-[#E3E6E9]">
+                    <span className="text-[#718096]">Pro-Rata Eligible Amount</span>
+                    <span className="font-semibold text-[#20283A]">{formatCurrency(calcResult.pro_rata_refund)}</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100 text-red-600">
+                  <div className="flex justify-between py-1 border-b border-[#E3E6E9] text-[#BA2525]">
                     <span>Processing Fee ({form.processingFeePercent}%)</span>
                     <span>− {formatCurrency(calcResult.processing_fee)}</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100 text-red-600">
+                  <div className="flex justify-between py-1 border-b border-[#E3E6E9] text-[#BA2525]">
                     <span>Material / Kit Deduction</span>
                     <span>− {formatCurrency(calcResult.material_fee)}</span>
                   </div>
-                  <div className="flex justify-between py-2 pt-3 border-t-2 border-slate-200 text-sm">
-                    <span className="font-bold text-slate-900">Estimated Refund</span>
-                    <span className="font-black text-emerald-600 text-lg">{formatCurrency(calcResult.estimated_refund)}</span>
+                  <div className="flex justify-between py-2 pt-3 border-t-2 border-[#E3E6E9] text-sm">
+                    <span className="font-bold text-[#20283A]">Estimated Refund</span>
+                    <span className="font-black text-emerald-700 text-lg">{formatCurrency(calcResult.estimated_refund)}</span>
                   </div>
                 </div>
 
-                <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">
+                <div className="mt-3.5 p-3 bg-amber-50/75 border border-amber-200 rounded-xl text-amber-900 text-xs">
                   <p className="font-semibold">10-Day Statutory Deadline:</p>
                   <p>Processing must complete by <strong>{formatDate(calcResult.processing_deadline)}</strong>.</p>
                 </div>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-200 flex gap-2">
-                <Button className="flex-1 justify-center" onClick={submitNewRequest}>
-                  <Send className="w-4 h-4" /> Submit for Review
+              <div className="mt-4 pt-3 border-t border-[#E3E6E9] flex gap-2">
+                <Button className="flex-1 justify-center bg-[#20283A] text-white hover:bg-[#20283A]/90" onClick={submitNewRequest}>
+                  <Send className="w-4 h-4 mr-1.5" /> Submit for Review
                 </Button>
               </div>
             </Card>
           ) : (
-            <Card className="p-8 flex flex-col items-center justify-center text-center">
-              <Calculator className="w-12 h-12 text-slate-300 mb-2" />
-              <p className="text-sm font-medium text-slate-700">Live Breakdown Preview</p>
-              <p className="text-xs text-slate-400 mt-1 max-w-xs">Fill the details on the left to compute the exact pro-rata breakdown and statutory deadline.</p>
+            <Card className="p-8 flex flex-col items-center justify-center text-center rounded-2xl border border-[#E3E6E9] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+              <Calculator className="w-12 h-12 text-[#718096]/30 mb-2" />
+              <p className="text-sm font-semibold text-[#20283A]">Live Breakdown Preview</p>
+              <p className="text-xs text-[#718096] mt-1 max-w-xs">Fill the details on the left to compute the exact pro-rata breakdown and statutory deadline.</p>
             </Card>
           )}
         </div>
@@ -542,7 +544,7 @@ export default function RefundCalculator() {
       <Modal open={!!approveModalItem} onClose={() => setApproveModalItem(null)} title="Approve Student Refund" size="md">
         {approveModalItem && (
           <form onSubmit={handleApprove} className="p-5 space-y-4">
-            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1">
+            <div className="bg-slate-50/75 p-3.5 rounded-xl border border-[#E3E6E9] text-xs space-y-1">
               <p><strong>Student:</strong> {approveModalItem.student_name} ({approveModalItem.student_id})</p>
               <p><strong>Amount Paid:</strong> {formatCurrency(approveModalItem.amount_paid)}</p>
               <p><strong>Calculated Estimate:</strong> {formatCurrency(approveModalItem.estimated_refund)}</p>
@@ -557,11 +559,11 @@ export default function RefundCalculator() {
             />
 
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Mandatory Approval Reason <span className="text-red-500">*</span>
+              <label className="text-xs font-semibold text-[#20283A] block mb-1">
+                Mandatory Approval Reason <span className="text-[#BA2525]">*</span>
               </label>
               <textarea
-                className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full text-xs p-2.5 border border-[#E3E6E9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#20283A]"
                 rows={3}
                 value={approvalReason}
                 onChange={e => setApprovalReason(e.target.value)}
@@ -569,7 +571,7 @@ export default function RefundCalculator() {
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#E3E6E9]">
               <Button type="button" variant="outline" onClick={() => setApproveModalItem(null)}>Cancel</Button>
               <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">Confirm Approval</Button>
             </div>
@@ -581,17 +583,17 @@ export default function RefundCalculator() {
       <Modal open={!!rejectModalItem} onClose={() => setRejectModalItem(null)} title="Reject Refund Request" size="md">
         {rejectModalItem && (
           <form onSubmit={handleReject} className="p-5 space-y-4">
-            <div className="bg-red-50 p-3 rounded-lg border border-red-200 text-xs text-red-800 space-y-1">
+            <div className="bg-rose-50 p-3.5 rounded-xl border border-rose-200 text-xs text-[#BA2525] space-y-1">
               <p>Rejecting refund request #{rejectModalItem.id} for <strong>{rejectModalItem.student_name}</strong>.</p>
               <p>This action will be logged in the permanent audit trail.</p>
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Mandatory Rejection Reason <span className="text-red-500">*</span>
+              <label className="text-xs font-semibold text-[#20283A] block mb-1">
+                Mandatory Rejection Reason <span className="text-[#BA2525]">*</span>
               </label>
               <textarea
-                className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full text-xs p-2.5 border border-[#E3E6E9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#20283A]"
                 rows={3}
                 value={rejectionReason}
                 onChange={e => setRejectionReason(e.target.value)}
@@ -600,9 +602,9 @@ export default function RefundCalculator() {
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#E3E6E9]">
               <Button type="button" variant="outline" onClick={() => setRejectModalItem(null)}>Cancel</Button>
-              <Button type="submit" className="bg-red-600 hover:bg-red-700 text-white">Confirm Rejection</Button>
+              <Button type="submit" className="bg-rose-600 hover:bg-rose-700 text-white">Confirm Rejection</Button>
             </div>
           </form>
         )}
@@ -612,59 +614,59 @@ export default function RefundCalculator() {
       <Modal open={!!viewBreakdownItem} onClose={() => setViewBreakdownItem(null)} title="Refund Calculation Breakdown" size="md">
         {viewBreakdownItem && (
           <div className="p-5 space-y-3.5 text-xs">
-            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1">
-              <p className="font-bold text-sm text-slate-900">{viewBreakdownItem.student_name} ({viewBreakdownItem.student_id})</p>
-              <p className="text-slate-500">Withdrawal Reason: {viewBreakdownItem.withdrawal_reason || 'N/A'}</p>
+            <div className="bg-slate-50/75 p-3.5 rounded-xl border border-[#E3E6E9] space-y-1">
+              <p className="font-bold text-sm text-[#20283A]">{viewBreakdownItem.student_name} ({viewBreakdownItem.student_id})</p>
+              <p className="text-[#718096]">Withdrawal Reason: {viewBreakdownItem.withdrawal_reason || 'N/A'}</p>
             </div>
 
-            <div className="space-y-2 border-b border-slate-200 pb-3">
+            <div className="space-y-2 border-b border-[#E3E6E9] pb-3">
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Course Commencement to End:</span>
-                <span className="font-semibold">{formatDate(viewBreakdownItem.course_start_date)} to {formatDate(viewBreakdownItem.course_end_date)} ({viewBreakdownItem.total_days} days)</span>
+                <span className="text-[#718096]">Course Commencement to End:</span>
+                <span className="font-semibold text-[#20283A]">{formatDate(viewBreakdownItem.course_start_date)} to {formatDate(viewBreakdownItem.course_end_date)} ({viewBreakdownItem.total_days} days)</span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Withdrawal Date:</span>
-                <span className="font-semibold">{formatDate(viewBreakdownItem.withdrawal_date)} ({viewBreakdownItem.days_attended} days attended)</span>
+                <span className="text-[#718096]">Withdrawal Date:</span>
+                <span className="font-semibold text-[#20283A]">{formatDate(viewBreakdownItem.withdrawal_date)} ({viewBreakdownItem.days_attended} days attended)</span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Unused Days:</span>
-                <span className="font-semibold">{viewBreakdownItem.unused_days} days</span>
+                <span className="text-[#718096]">Unused Days:</span>
+                <span className="font-semibold text-[#20283A]">{viewBreakdownItem.unused_days} days</span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Total Fees Paid:</span>
-                <span className="font-semibold">{formatCurrency(viewBreakdownItem.amount_paid)}</span>
+                <span className="text-[#718096]">Total Fees Paid:</span>
+                <span className="font-semibold text-[#20283A]">{formatCurrency(viewBreakdownItem.amount_paid)}</span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Pro-Rata Eligible Amount:</span>
-                <span className="font-semibold">{formatCurrency(viewBreakdownItem.pro_rata_amount)}</span>
+                <span className="text-[#718096]">Pro-Rata Eligible Amount:</span>
+                <span className="font-semibold text-[#20283A]">{formatCurrency(viewBreakdownItem.pro_rata_amount)}</span>
               </div>
-              <div className="flex justify-between py-1 text-red-600">
+              <div className="flex justify-between py-1 text-[#BA2525]">
                 <span>Processing Fee:</span>
                 <span>− {formatCurrency(viewBreakdownItem.processing_fee)}</span>
               </div>
-              <div className="flex justify-between py-1 text-red-600">
+              <div className="flex justify-between py-1 text-[#BA2525]">
                 <span>Material / Kit Fee:</span>
                 <span>− {formatCurrency(viewBreakdownItem.material_fee)}</span>
               </div>
             </div>
 
             <div className="flex justify-between py-1 text-sm font-bold">
-              <span>Estimated Refund:</span>
-              <span className="text-emerald-600">{formatCurrency(viewBreakdownItem.estimated_refund)}</span>
+              <span className="text-[#20283A]">Estimated Refund:</span>
+              <span className="text-emerald-700">{formatCurrency(viewBreakdownItem.estimated_refund)}</span>
             </div>
 
             {viewBreakdownItem.approved_refund && (
-              <div className="flex justify-between py-1 text-sm font-bold bg-emerald-50 p-2 rounded border border-emerald-200 text-emerald-900">
+              <div className="flex justify-between py-1 text-sm font-bold bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 text-emerald-900">
                 <span>Final Approved Amount:</span>
                 <span>{formatCurrency(viewBreakdownItem.approved_refund)}</span>
               </div>
             )}
 
             {viewBreakdownItem.payout_reference && (
-              <div className="bg-indigo-50 p-2.5 rounded border border-indigo-200 text-indigo-900 space-y-0.5">
+              <div className="bg-slate-50 p-3 rounded-xl border border-[#E3E6E9] text-[#20283A] space-y-0.5">
                 <p className="font-bold">Simulated Payout Details:</p>
                 <p className="font-mono text-[11px]">Ref: {viewBreakdownItem.payout_reference}</p>
-                <p className="text-[10px] text-indigo-700">Processed: {formatDate(viewBreakdownItem.processed_date || '')}</p>
+                <p className="text-[10px] text-[#718096]">Processed: {formatDate(viewBreakdownItem.processed_date || '')}</p>
               </div>
             )}
 

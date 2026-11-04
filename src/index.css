@@ -4,8 +4,15 @@
 
 @layer base {
   :root {
-    --color-primary: #4f46e5;
-    --color-primary-hover: #4338ca;
+    --color-workspace: #929DB4;
+    --color-canvas: #EEF0F1;
+    --color-card: #FFFFFF;
+    --color-text-primary: #20283A;
+    --color-text-secondary: #718096;
+    --color-accent-orange: #E95435;
+    --color-accent-orange-hover: #D84527;
+    --color-accent-blue: #79A9D1;
+    --color-border: #E3E6E9;
   }
 
   body {
@@ -13,13 +20,13 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    color: #0f172a;
-    background-color: #f8fafc;
+    color: #20283A;
+    background-color: #929DB4;
   }
 
-  /* Accessible focus indicators */
+  /* Accessible focus indicators with TWISTY orange accent */
   *:focus-visible {
-    outline: 2px solid #4f46e5;
+    outline: 2px solid #E95435;
     outline-offset: 2px;
   }
 
@@ -29,7 +36,7 @@
   }
 }
 
-/* Custom sleek scrollbars */
+/* Custom sleek minimal scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -40,18 +47,18 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #CBD5E1;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #929DB4;
 }
 
 /* Print styles for official receipts */
 @media print {
   body {
-    background: #ffffff !important;
+    background: #FFFFFF !important;
   }
   .no-print {
     display: none !important;

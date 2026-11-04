@@ -7,7 +7,8 @@ import type { Student, Instalment } from '../types';
 import { api } from '../utils/api';
 import {
   Search, BookOpen, Plus, FileText, Printer, CheckCircle,
-  AlertTriangle, Clock, Bell, ArrowRight, ShieldCheck, Download
+  AlertTriangle, Clock, Bell, ArrowRight, ShieldCheck, Download,
+  ExternalLink, CreditCard, ChevronRight
 } from 'lucide-react';
 
 export default function FeeLedger() {
@@ -16,6 +17,7 @@ export default function FeeLedger() {
 
   const { students, updateStudent, addPayment, addNotification, refreshData, backendConnected } = useApp();
   const [q, setQ] = useState('');
+  const [centreFilter, setCentreFilter] = useState('All');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [paymentModal, setPaymentModal] = useState<Instalment | null>(null);
   const [receiptModal, setReceiptModal] = useState<any | null>(null);
@@ -25,12 +27,16 @@ export default function FeeLedger() {
   const [submitting, setSubmitting] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
+  const centres = ['All', 'Jaipur Main', 'Jaipur West', 'Kota', 'Ajmer'];
+
   const filtered = useMemo(() =>
-    students.filter(s =>
-      s.name.toLowerCase().includes(q.toLowerCase()) ||
-      s.id.toLowerCase().includes(q.toLowerCase()) ||
-      s.rollNumber.toLowerCase().includes(q.toLowerCase())
-    ), [students, q]
+    students.filter(s => {
+      const matchQ = s.name.toLowerCase().includes(q.toLowerCase()) ||
+        s.id.toLowerCase().includes(q.toLowerCase()) ||
+        s.rollNumber.toLowerCase().includes(q.toLowerCase());
+      const matchCentre = centreFilter === 'All' || s.centre === centreFilter;
+      return matchQ && matchCentre;
+    }), [students, q, centreFilter]
   );
 
   // Synchronize selection with query parameter if present
@@ -124,289 +130,286 @@ export default function FeeLedger() {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays > 0) {
-      return { isOverdue: true, text: `${diffDays} day${diffDays !== 1 ? 's' : ''} overdue` };
+      return { isOverdue: true, text: `${diffDays}d overdue` };
     } else if (diffDays === 0) {
       return { isOverdue: false, text: 'Due today' };
     } else {
       const inDays = Math.abs(diffDays);
-      return { isOverdue: false, text: `Due in ${inDays} day${inDays !== 1 ? 's' : ''}` };
+      return { isOverdue: false, text: `${inDays}d left` };
     }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-[#E3E6E9] rounded-2xl px-5 py-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
         <div>
-          <h1 className="text-base font-semibold text-slate-900">Student Fee Ledger</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Complete financial record, statutory instalment schedule, official GST receipts & reminder history
+          <h1 className="text-sm font-bold text-[#20283A] leading-tight">Student Fee Ledger & Financial Accounts</h1>
+          <p className="text-[11px] text-[#718096] leading-tight mt-0.5">
+            Full audit ledger, statutory instalment schedule, official GST receipts and reminder tracking
           </p>
         </div>
+        {activeStudent && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[#718096]">Selected:</span>
+            <span className="text-xs font-bold text-[#20283A] bg-[#EEF0F1] px-2.5 py-1 rounded-xl">
+              {activeStudent.name} ({activeStudent.id})
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Student list */}
-        <Card className="overflow-hidden">
-          <div className="p-3 border-b border-slate-100">
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
-              <Search className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Left Column: Student Selector */}
+        <Card className="overflow-hidden flex flex-col h-[750px]">
+          {/* Search & Centre Filter Toolbar */}
+          <div className="p-3.5 border-b border-[#E3E6E9] space-y-2 bg-[#FAFAFA]">
+            <div className="flex items-center gap-2 bg-white border border-[#E3E6E9] rounded-xl px-3 py-1.5 focus-within:border-[#E95435] transition-all">
+              <Search className="w-3.5 h-3.5 text-[#718096] flex-shrink-0" />
               <input
                 value={q}
                 onChange={e => setQ(e.target.value)}
-                placeholder="Search by name, ID or roll #…"
-                className="bg-transparent text-xs text-slate-900 placeholder:text-slate-400 outline-none flex-1"
+                placeholder="Search name, ID, roll no..."
+                className="bg-transparent text-xs text-[#20283A] placeholder:text-[#718096] outline-none flex-1 font-medium"
               />
             </div>
-          </div>
-          <div className="overflow-y-auto max-h-[700px] divide-y divide-slate-100">
-            {filtered.length === 0 ? (
-              <EmptyState icon={<BookOpen className="w-8 h-8" />} title="No students found" />
-            ) : (
-              filtered.map(s => (
+
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none text-[11px]">
+              {centres.map(c => (
                 <button
-                  key={s.id}
-                  onClick={() => setSelectedStudent(s)}
-                  className={`w-full text-left px-4 py-3 transition-colors ${
-                    activeStudent?.id === s.id ? 'bg-indigo-50/70 border-l-4 border-l-indigo-600' : 'hover:bg-slate-50'
+                  key={c}
+                  onClick={() => setCentreFilter(c)}
+                  className={`px-2 py-0.5 rounded-lg font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                    centreFilter === c
+                      ? 'bg-[#20283A] text-white font-semibold shadow-xs'
+                      : 'bg-white border border-[#E3E6E9] text-[#718096] hover:bg-[#EEF0F1] hover:text-[#20283A]'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">{s.name}</p>
-                      <p className="text-xs text-slate-500">{s.id} · {s.course}</p>
-                    </div>
-                    <Badge status={s.feeStatus} />
-                  </div>
-                  <div className="flex items-center justify-between mt-1 text-xs">
-                    <span className="text-slate-500">{s.centre}</span>
-                    {s.outstanding > 0 ? (
-                      <span className="font-semibold text-rose-600">{formatCurrency(s.outstanding)} due</span>
-                    ) : (
-                      <span className="font-semibold text-emerald-600">Cleared</span>
-                    )}
-                  </div>
+                  {c}
                 </button>
-              ))
+              ))}
+            </div>
+          </div>
+
+          {/* Student List */}
+          <div className="overflow-y-auto flex-1 divide-y divide-[#E3E6E9]">
+            {filtered.length === 0 ? (
+              <EmptyState icon={<BookOpen className="w-6 h-6" />} title="No students found" />
+            ) : (
+              filtered.map(s => {
+                const isSelected = activeStudent?.id === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setSelectedStudent(s)}
+                    className={`w-full text-left p-3.5 transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#FDF1ED] border-l-4 border-l-[#E95435]'
+                        : 'hover:bg-[#F8FAFC]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className={`text-xs font-bold truncate ${isSelected ? 'text-[#E95435]' : 'text-[#20283A]'}`}>
+                          {s.name}
+                        </p>
+                        <p className="text-[10px] text-[#718096] mt-0.5 truncate">{s.id} · {s.course}</p>
+                      </div>
+                      <Badge status={s.feeStatus} />
+                    </div>
+
+                    <div className="flex items-center justify-between mt-2 text-[11px]">
+                      <span className="text-[#718096] font-medium">{s.centre}</span>
+                      {s.outstanding > 0 ? (
+                        <span className="font-bold text-[#BA2525] tabular-nums">{formatCurrency(s.outstanding)} due</span>
+                      ) : (
+                        <span className="font-bold text-[#1B7043]">Fully Paid</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
         </Card>
 
-        {/* Ledger detail */}
-        <div className="lg:col-span-2 space-y-4">
+        {/* Right Column: Ledger Detail */}
+        <div className="lg:col-span-2 space-y-5">
           {activeStudent ? (
             <>
-              {/* Header card with complete financial hierarchy */}
-              <Card className="p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+              {/* Financial Hierarchy Card */}
+              <Card className="p-6">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-5 pb-4 border-b border-[#E3E6E9]">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-bold text-slate-900">{activeStudent.name}</h2>
-                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                        {activeStudent.rollNumber}
-                      </span>
+                      <h2 className="text-base font-bold text-[#20283A]">{activeStudent.name}</h2>
+                      <Badge status={activeStudent.feeStatus} />
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Student ID: <span className="font-mono font-medium text-slate-700">{activeStudent.id}</span> · {activeStudent.course} · {activeStudent.batch} Batch · {activeStudent.centre}
+                    <p className="text-xs text-[#718096] mt-0.5">
+                      Student ID: <strong className="text-[#20283A]">{activeStudent.id}</strong> · Roll: <strong className="text-[#20283A]">{activeStudent.rollNumber}</strong> · {activeStudent.course} ({activeStudent.batch}) · {activeStudent.centre}
                     </p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Parent: <span className="font-medium text-slate-700">{activeStudent.parentName}</span> ({activeStudent.parentPhone})
+                    <p className="text-[11px] text-[#718096] mt-0.5">
+                      Parent: <strong className="text-[#20283A]">{activeStudent.parentName}</strong> ({activeStudent.parentPhone})
                     </p>
                   </div>
-                  <Badge status={activeStudent.feeStatus} className="text-xs px-3 py-1" />
                 </div>
 
-                {/* Complete Financial Hierarchy (Gross, Discount, Net, Paid, Outstanding) */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-100">
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Gross Course Fee</p>
-                    <p className="text-base font-bold text-slate-900 mt-0.5">{formatCurrency(activeStudent.totalFee)}</p>
-                    {activeStudent.totalDiscount && activeStudent.totalDiscount > 0 ? (
-                      <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
-                        - {formatCurrency(activeStudent.totalDiscount)} Scholarship
-                      </p>
-                    ) : (
-                      <p className="text-[11px] text-slate-400 mt-0.5">Standard Fee</p>
-                    )}
+                {/* 4-Box Financial Metrics */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3.5 bg-[#FAFAFA] border border-[#E3E6E9] rounded-2xl">
+                    <p className="text-[10px] font-bold text-[#718096] uppercase tracking-wider">Course Fee</p>
+                    <p className="text-lg font-bold text-[#20283A] tabular-nums mt-0.5">{formatCurrency(activeStudent.totalFee)}</p>
+                    <p className="text-[10px] text-[#718096] mt-0.5">Base Structure</p>
                   </div>
 
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Effective Net Fee</p>
-                    <p className="text-base font-bold text-slate-900 mt-0.5">
-                      {formatCurrency(activeStudent.effectiveFee || (activeStudent.totalFee - (activeStudent.totalDiscount || 0)))}
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Post-discount payable</p>
+                  <div className="p-3.5 bg-[#FAFAFA] border border-[#E3E6E9] rounded-2xl">
+                    <p className="text-[10px] font-bold text-[#718096] uppercase tracking-wider">Discounts</p>
+                    <p className="text-lg font-bold text-[#718096] tabular-nums mt-0.5">{formatCurrency(activeStudent.totalDiscount ?? (activeStudent as any).discount ?? 0)}</p>
+                    <p className="text-[10px] text-[#718096] mt-0.5">Scholarships</p>
                   </div>
 
-                  <div className="bg-emerald-50/70 border border-emerald-100 rounded-lg p-3">
-                    <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wider">Total Received</p>
-                    <p className="text-base font-bold text-emerald-700 mt-0.5">{formatCurrency(activeStudent.amountPaid)}</p>
-                    <p className="text-[11px] text-emerald-600 mt-0.5">Reconciled to bank</p>
+                  <div className="p-3.5 bg-[#EBF7EE] border border-[#CDEED6] rounded-2xl">
+                    <p className="text-[10px] font-bold text-[#1B7043] uppercase tracking-wider">Paid Amount</p>
+                    <p className="text-lg font-bold text-[#1B7043] tabular-nums mt-0.5">{formatCurrency(activeStudent.amountPaid)}</p>
+                    <p className="text-[10px] text-[#1B7043] mt-0.5">Verified</p>
                   </div>
 
-                  <div className={`rounded-lg p-3 border ${
-                    activeStudent.outstanding > 0
-                      ? 'bg-rose-50/70 border-rose-200'
-                      : 'bg-emerald-50/70 border-emerald-100'
+                  <div className={`p-3.5 rounded-2xl border ${
+                    activeStudent.outstanding > 0 ? 'bg-[#FDF2F2] border-[#F9CACA]' : 'bg-[#FAFAFA] border-[#E3E6E9]'
                   }`}>
-                    <p className={`text-[11px] font-semibold uppercase tracking-wider ${
-                      activeStudent.outstanding > 0 ? 'text-rose-800' : 'text-emerald-800'
-                    }`}>
-                      Remaining Balance
+                    <p className="text-[10px] font-bold text-[#BA2525] uppercase tracking-wider">Balance Due</p>
+                    <p className="text-lg font-bold text-[#BA2525] tabular-nums mt-0.5">{formatCurrency(activeStudent.outstanding)}</p>
+                    <p className="text-[10px] text-[#BA2525] mt-0.5">
+                      {activeStudent.feeStatus === 'Overdue' ? 'Past Deadline' : 'Net Remaining'}
                     </p>
-                    <p className={`text-base font-bold mt-0.5 ${
-                      activeStudent.outstanding > 0 ? 'text-rose-600' : 'text-emerald-600'
-                    }`}>
-                      {formatCurrency(activeStudent.outstanding)}
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      {activeStudent.outstanding > 0 ? 'Action required' : 'Fully cleared'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Progress bar */}
-                <div className="mt-4 pt-2">
-                  <div className="flex justify-between text-xs text-slate-500 mb-1.5">
-                    <span className="font-medium">Fee Collection Completion</span>
-                    <span className="font-bold text-slate-700">
-                      {Math.round((activeStudent.amountPaid / (activeStudent.effectiveFee || activeStudent.totalFee)) * 100)}%
-                    </span>
-                  </div>
-                  <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                      style={{
-                        width: `${Math.min(100, (activeStudent.amountPaid / (activeStudent.effectiveFee || activeStudent.totalFee)) * 100)}%`
-                      }}
-                    />
                   </div>
                 </div>
               </Card>
 
-              {/* Instalment schedule with dynamic overdue indicators */}
-              <Card className="overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              {/* Instalments Schedule Table */}
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Instalment Schedule</h3>
-                    <p className="text-[11px] text-slate-500">Statutory payment breakdown with overdue tracking</p>
+                    <h3 className="text-sm font-bold text-[#20283A]">Statutory Instalment Schedule</h3>
+                    <p className="text-[11px] text-[#718096] mt-0.5">Tracks due dates, milestones, payments and remaining balances</p>
                   </div>
-                  <span className="text-xs text-slate-400">{activeStudent.instalments.length} instalments</span>
+                  <span className="text-[11px] font-semibold text-[#718096] bg-[#EEF0F1] px-2.5 py-0.5 rounded-lg">
+                    {activeStudent.instalments.length} Instalments
+                  </span>
                 </div>
-                <div className="divide-y divide-slate-100">
-                  {activeStudent.instalments.map(ins => {
-                    const dueInfo = getDueOrOverdueInfo(ins);
-                    const remaining = Math.max(0, ins.amount - ins.paid);
 
-                    return (
-                      <div key={ins.id} className="px-5 py-4 flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-3.5 min-w-0">
-                          <div className={`w-2.5 h-10 rounded-full flex-shrink-0 ${
-                            ins.status === 'Paid' ? 'bg-emerald-500' :
-                            ins.status === 'Overdue' ? 'bg-rose-500' :
-                            ins.status === 'Partially Paid' ? 'bg-amber-400' : 'bg-slate-300'
-                          }`} />
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-bold text-slate-900">Instalment {ins.number}</p>
-                              {dueInfo?.isOverdue && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                <div className="overflow-x-auto rounded-2xl border border-[#E3E6E9]">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-[#FAFAFA] text-[#718096] border-b border-[#E3E6E9] uppercase font-semibold text-[10px] tracking-wider">
+                      <tr>
+                        <th className="py-2.5 px-3.5">#</th>
+                        <th className="py-2.5 px-3.5">Due Date & Timeline</th>
+                        <th className="py-2.5 px-3.5 text-right">Amount</th>
+                        <th className="py-2.5 px-3.5 text-right">Paid</th>
+                        <th className="py-2.5 px-3.5 text-right">Remaining</th>
+                        <th className="py-2.5 px-3.5 text-center">Status</th>
+                        <th className="py-2.5 px-3.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E3E6E9]">
+                      {activeStudent.instalments.map(ins => {
+                        const due = ins.amount - ins.paid;
+                        const dueInfo = getDueOrOverdueInfo(ins);
+                        const isPaid = ins.status === 'Paid';
+
+                        return (
+                          <tr key={ins.id} className="hover:bg-[#F8FAFC] transition-colors">
+                            <td className="py-3 px-3.5 font-bold text-[#20283A]">#{ins.number}</td>
+                            <td className="py-3 px-3.5">
+                              <div className="font-semibold text-[#20283A]">{formatDate(ins.dueDate)}</div>
+                              {dueInfo && (
+                                <span className={`text-[10px] font-bold ${dueInfo.isOverdue ? 'text-[#BA2525]' : 'text-[#718096]'}`}>
                                   {dueInfo.text}
                                 </span>
                               )}
-                              {!dueInfo?.isOverdue && dueInfo?.text && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                                  {dueInfo.text}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              Due Date: <span className="font-medium text-slate-700">{formatDate(ins.dueDate)}</span>
-                              {ins.paidDate && ` · Paid on: ${formatDate(ins.paidDate)}`}
-                            </p>
-                            {ins.receiptNo && (
-                              <p className="text-[11px] text-indigo-600 font-medium mt-0.5">
-                                Receipt #{ins.receiptNo}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-slate-900">{formatCurrency(ins.amount)}</p>
-                            {ins.paid > 0 && ins.paid < ins.amount && (
-                              <p className="text-xs text-amber-600 font-medium">Paid: {formatCurrency(ins.paid)}</p>
-                            )}
-                            {remaining > 0 && ins.paid > 0 && (
-                              <p className="text-[11px] text-rose-600 font-medium">Due: {formatCurrency(remaining)}</p>
-                            )}
-                            <div className="mt-1">
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-bold text-[#20283A] tabular-nums">{formatCurrency(ins.amount)}</td>
+                            <td className="py-3 px-3.5 text-right font-bold text-[#1B7043] tabular-nums">{formatCurrency(ins.paid)}</td>
+                            <td className="py-3 px-3.5 text-right font-bold text-[#BA2525] tabular-nums">
+                              {due > 0 ? formatCurrency(due) : <span className="text-[#1B7043]">₹0</span>}
+                            </td>
+                            <td className="py-3 px-3.5 text-center">
                               <Badge status={ins.status} />
-                            </div>
-                          </div>
-
-                          {ins.status !== 'Paid' && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setPaymentModal(ins)}
-                              className="flex-shrink-0"
-                            >
-                              <Plus className="w-3.5 h-3.5" /> Record
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                            </td>
+                            <td className="py-3 px-3.5 text-right">
+                              {!isPaid ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => setPaymentModal(ins)}
+                                  className="text-[11px] py-1 px-2.5"
+                                >
+                                  Record
+                                </Button>
+                              ) : (
+                                <span className="text-[11px] font-semibold text-[#1B7043] flex items-center justify-end gap-1">
+                                  <CheckCircle className="w-3.5 h-3.5" /> Reconciled
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </Card>
 
-              {/* Official Receipts History */}
-              <Card className="overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              {/* Official Tax Receipts */}
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Official GST Fee Receipts</h3>
-                    <p className="text-[11px] text-slate-500">Verified payment vouchers with 18% GST tax breakdown</p>
+                    <h3 className="text-sm font-bold text-[#20283A]">Official Verified Tax Receipts</h3>
+                    <p className="text-[11px] text-[#718096] mt-0.5">Audit-compliant GST receipts with break-ups</p>
                   </div>
-                  <span className="text-xs text-slate-400">{receipts.length} receipt{receipts.length !== 1 ? 's' : ''}</span>
+                  <span className="text-[11px] font-semibold text-[#718096] bg-[#EEF0F1] px-2.5 py-0.5 rounded-lg">
+                    {receipts.length} Issued
+                  </span>
                 </div>
-                {receipts.length > 0 ? (
-                  <div className="overflow-x-auto">
+
+                {loadingDetails ? (
+                  <div className="py-8 text-center text-xs text-[#718096]">Loading receipts...</div>
+                ) : receipts.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-[#718096] bg-[#FAFAFA] rounded-2xl border border-[#E3E6E9]">
+                    No receipts issued yet. Payments posted to instalments will generate official tax receipts automatically.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-2xl border border-[#E3E6E9]">
                     <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-50 text-slate-600 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-100">
+                      <thead className="bg-[#FAFAFA] text-[#718096] border-b border-[#E3E6E9] uppercase font-semibold text-[10px] tracking-wider">
                         <tr>
-                          <th className="py-2.5 px-4">Receipt #</th>
-                          <th className="py-2.5 px-4">Date</th>
-                          <th className="py-2.5 px-4 text-right">Base Amount</th>
-                          <th className="py-2.5 px-4 text-right">GST (18%)</th>
-                          <th className="py-2.5 px-4 text-right">Total Paid</th>
-                          <th className="py-2.5 px-4">Method / Ref</th>
-                          <th className="py-2.5 px-4 text-center">Action</th>
+                          <th className="py-2.5 px-3.5">Receipt #</th>
+                          <th className="py-2.5 px-3.5">Date</th>
+                          <th className="py-2.5 px-3.5 text-right">Base Amount</th>
+                          <th className="py-2.5 px-3.5 text-right">GST (18%)</th>
+                          <th className="py-2.5 px-3.5 text-right">Total</th>
+                          <th className="py-2.5 px-3.5 text-center">Action</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {receipts.map(r => (
-                          <tr key={r.id} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="py-3 px-4 font-mono font-bold text-indigo-700">{r.receipt_no}</td>
-                            <td className="py-3 px-4 text-slate-600">{formatDate(r.date)}</td>
-                            <td className="py-3 px-4 text-right font-medium text-slate-700">{formatCurrency(r.base_amount)}</td>
-                            <td className="py-3 px-4 text-right text-slate-500">
-                              {formatCurrency(r.cgst_amount + r.sgst_amount)}
+                      <tbody className="divide-y divide-[#E3E6E9]">
+                        {receipts.map((r: any) => (
+                          <tr key={r.id || r.receipt_no} className="hover:bg-[#F8FAFC] transition-colors">
+                            <td className="py-3 px-3.5 font-bold text-[#20283A]">{r.receipt_no}</td>
+                            <td className="py-3 px-3.5 text-[#718096]">{formatDate(r.date)}</td>
+                            <td className="py-3 px-3.5 text-right text-[#20283A] tabular-nums">{formatCurrency(r.base_amount)}</td>
+                            <td className="py-3 px-3.5 text-right text-[#718096] tabular-nums">
+                              {formatCurrency((r.cgst_amount || 0) + (r.sgst_amount || 0))}
                             </td>
-                            <td className="py-3 px-4 text-right font-bold text-emerald-700">{formatCurrency(r.total_amount)}</td>
-                            <td className="py-3 px-4 text-slate-600">
-                              <span className="font-medium text-slate-800">{r.payment_method}</span>
-                              <span className="text-[10px] text-slate-400 block font-mono">{r.transaction_id}</span>
+                            <td className="py-3 px-3.5 text-right font-bold text-[#1B7043] tabular-nums">
+                              {formatCurrency(r.total_amount)}
                             </td>
-                            <td className="py-3 px-4 text-center">
+                            <td className="py-3 px-3.5 text-center">
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => setReceiptModal(r)}
-                                className="inline-flex items-center gap-1 text-[11px] py-1 px-2"
+                                className="text-[11px] py-1 px-2.5 flex items-center gap-1 mx-auto"
                               >
-                                <FileText className="w-3 h-3 text-indigo-600" /> View Tax Invoice
+                                <Printer className="w-3 h-3 text-[#E95435]" /> View
                               </Button>
                             </td>
                           </tr>
@@ -414,228 +417,248 @@ export default function FeeLedger() {
                       </tbody>
                     </table>
                   </div>
-                ) : (
-                  <div className="py-8 text-center text-xs text-slate-400">
-                    No receipts generated yet for this student.
-                  </div>
                 )}
               </Card>
 
-              {/* Automated Reminder History */}
-              <Card className="overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              {/* Statutory Reminder History */}
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Communication & Reminder History</h3>
-                    <p className="text-[11px] text-slate-500">Scheduled, sent and suppressed fee alerts for parent</p>
+                    <h3 className="text-sm font-bold text-[#20283A]">Statutory Reminder & Notification Log</h3>
+                    <p className="text-[11px] text-[#718096] mt-0.5">Multi-channel dispatches with unique event key tracking</p>
                   </div>
-                  <span className="text-xs text-slate-400">{studentReminders.length} logged</span>
+                  <span className="text-[11px] font-semibold text-[#718096] bg-[#EEF0F1] px-2.5 py-0.5 rounded-lg">
+                    {studentReminders.length} Logged
+                  </span>
                 </div>
-                {studentReminders.length > 0 ? (
-                  <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
-                    {studentReminders.map(rem => (
-                      <div key={rem.id} className="p-4 flex items-start justify-between gap-3 text-xs">
-                        <div className="space-y-1 min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-900">{rem.channel} Notification</span>
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-medium uppercase">
-                              {rem.lang === 'hi' ? 'Hindi' : 'English'}
-                            </span>
-                            <Badge status={rem.status} className="text-[10px] py-0.2" />
-                          </div>
-                          <p className="text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 text-[11px] leading-relaxed">
-                            "{rem.message}"
-                          </p>
-                          <div className="flex items-center gap-3 text-[10px] text-slate-400">
-                            <span>Target: {rem.parent_phone}</span>
-                            <span>·</span>
-                            <span>Instalment Due: {formatDate(rem.due_date)}</span>
-                            {rem.sent_at && (
-                              <>
-                                <span>·</span>
-                                <span>Delivered: {formatDate(rem.sent_at)}</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+
+                {studentReminders.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-[#718096] bg-[#FAFAFA] rounded-2xl border border-[#E3E6E9]">
+                    No reminder logs found for this student.
                   </div>
                 ) : (
-                  <div className="py-8 text-center text-xs text-slate-400">
-                    No reminder logs found for this student.
+                  <div className="overflow-x-auto rounded-2xl border border-[#E3E6E9]">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-[#FAFAFA] text-[#718096] border-b border-[#E3E6E9] uppercase font-semibold text-[10px] tracking-wider">
+                        <tr>
+                          <th className="py-2.5 px-3.5">Scheduled</th>
+                          <th className="py-2.5 px-3.5">Milestone / Key</th>
+                          <th className="py-2.5 px-3.5">Channel</th>
+                          <th className="py-2.5 px-3.5">Status</th>
+                          <th className="py-2.5 px-3.5">Delivery</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E3E6E9]">
+                        {studentReminders.map((rem: any) => (
+                          <tr key={rem.id} className="hover:bg-[#F8FAFC]">
+                            <td className="py-3 px-3.5 font-medium text-[#20283A]">{formatDate(rem.scheduled_date)}</td>
+                            <td className="py-3 px-3.5">
+                              <span className="font-mono text-[10px] text-[#718096] bg-[#EEF0F1] px-1.5 py-0.5 rounded">
+                                {rem.event_key || rem.id}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5 text-[#20283A] font-semibold">{rem.channel}</td>
+                            <td className="py-3 px-3.5">
+                              <Badge status={rem.status} />
+                            </td>
+                            <td className="py-3 px-3.5 text-[11px] text-[#718096]">
+                              {rem.delivery_status === 'delivered' ? '✓ Delivered' : '• Simulated'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </Card>
             </>
           ) : (
-            <Card>
-              <EmptyState
-                icon={<BookOpen className="w-10 h-10" />}
-                title="Select a student"
-                description="Choose a student from the list to view their fee ledger."
-              />
+            <Card className="p-12 text-center">
+              <BookOpen className="w-10 h-10 text-[#718096] mx-auto mb-3" />
+              <h3 className="text-sm font-bold text-[#20283A]">Select a student</h3>
+              <p className="text-xs text-[#718096] mt-1">Choose a student from the directory to view the complete financial ledger.</p>
             </Card>
           )}
         </div>
       </div>
 
-      {/* Payment recording modal */}
-      <Modal open={!!paymentModal} onClose={() => setPaymentModal(null)} title="Record Payment">
-        {paymentModal && activeStudent && (
-          <form onSubmit={handleRecordPayment} className="p-5 space-y-4">
-            <div className={`rounded-md px-3 py-2 text-xs border ${
-              backendConnected
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                : 'bg-amber-50 border-amber-200 text-amber-800'
-            }`}>
-              {backendConnected
-                ? 'Live Transaction — recorded directly to fee ledger database.'
-                : 'Offline Demo Mode — updates local demonstration session only.'}
+      {/* Record Payment Modal */}
+      {paymentModal && activeStudent && (
+        <Modal
+          open={Boolean(paymentModal)}
+          onClose={() => { setPaymentModal(null); setModalError(null); }}
+          title={`Record Payment — Instalment #${paymentModal.number}`}
+          size="md"
+        >
+          <form onSubmit={handleRecordPayment} className="space-y-4">
+            <div className="bg-[#EEF0F1] p-3.5 rounded-2xl text-xs space-y-1">
+              <div className="flex justify-between text-[#718096]">
+                <span>Student:</span>
+                <span className="font-bold text-[#20283A]">{activeStudent.name} ({activeStudent.id})</span>
+              </div>
+              <div className="flex justify-between text-[#718096]">
+                <span>Instalment Total:</span>
+                <span className="font-bold text-[#20283A]">{formatCurrency(paymentModal.amount)}</span>
+              </div>
+              <div className="flex justify-between text-[#718096]">
+                <span>Remaining Due:</span>
+                <span className="font-bold text-[#BA2525]">{formatCurrency(paymentModal.amount - paymentModal.paid)}</span>
+              </div>
             </div>
 
             {modalError && (
-              <div className="bg-red-50 border border-red-200 rounded-md p-2.5 text-xs text-red-700 font-medium">
+              <div className="p-3 bg-[#FDF2F2] border border-[#F9CACA] rounded-xl text-xs text-[#BA2525]">
                 {modalError}
               </div>
             )}
 
-            <div className="bg-slate-50 rounded-lg p-3 text-sm">
-              <p className="font-medium text-slate-900">{activeStudent.name}</p>
-              <p className="text-xs text-slate-500">Instalment {paymentModal.number} · Due {formatDate(paymentModal.dueDate)}</p>
-              <p className="text-xs text-slate-700 mt-1">
-                Instalment: {formatCurrency(paymentModal.amount)} · Already paid: {formatCurrency(paymentModal.paid)} · Remaining: {formatCurrency(paymentModal.amount - paymentModal.paid)}
-              </p>
-            </div>
             <Input
-              label="Amount (₹)"
+              label="Payment Amount (₹)"
               name="amount"
               type="number"
-              required
-              min={1}
+              min="1"
               max={paymentModal.amount - paymentModal.paid}
               defaultValue={paymentModal.amount - paymentModal.paid}
+              required
             />
-            <Select label="Payment Method" name="method" options={[
-              { value: 'Cash', label: 'Cash' },
-              { value: 'UPI', label: 'UPI' },
-              { value: 'Bank Transfer', label: 'Bank Transfer' },
-              { value: 'Cheque', label: 'Cheque' },
-              { value: 'Online', label: 'Online' },
-            ]} />
-            <Input label="Reference / Transaction ID" name="ref" placeholder="e.g. UTR / Chq # / Bank Ref" />
-            <Input label="Payment Date" name="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} />
-            <div className="flex gap-3 justify-end pt-2">
-              <Button variant="outline" type="button" onClick={() => setPaymentModal(null)} disabled={submitting}>Cancel</Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? 'Recording…' : 'Record Payment'}
+
+            <Select
+              label="Payment Method"
+              name="method"
+              options={[
+                { value: 'UPI', label: 'UPI (PhonePe, GPay, Paytm)' },
+                { value: 'Bank Transfer', label: 'NEFT / RTGS / IMPS' },
+                { value: 'Cash', label: 'Cash (Receipt Counter)' },
+                { value: 'Cheque', label: 'Bank Cheque / DD' },
+                { value: 'Card', label: 'Credit / Debit Card' },
+              ]}
+            />
+
+            <Input
+              label="Transaction / Bank Reference No."
+              name="ref"
+              placeholder="e.g. UPI-984729184 or CHQ-00123"
+              required
+            />
+
+            <Input
+              label="Payment Date"
+              name="date"
+              type="date"
+              defaultValue={new Date().toISOString().split('T')[0]}
+              required
+            />
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-[#E3E6E9]">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPaymentModal(null)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                loading={submitting}
+              >
+                Confirm & Issue Receipt
               </Button>
             </div>
           </form>
-        )}
-      </Modal>
+        </Modal>
+      )}
 
-      {/* Printable Tax Invoice Modal */}
-      <Modal open={!!receiptModal} onClose={() => setReceiptModal(null)} title="Official Tax Invoice / Fee Receipt" size="lg">
-        {receiptModal && (
-          <div className="p-6 space-y-6 text-slate-800" id="printable-receipt">
-            {/* Header with institute identity and GST */}
-            <div className="flex items-start justify-between border-b pb-4">
+      {/* Official Tax Receipt Modal */}
+      {receiptModal && (
+        <Modal
+          open={Boolean(receiptModal)}
+          onClose={() => setReceiptModal(null)}
+          title={`Official Tax Receipt — ${receiptModal.receipt_no}`}
+          size="lg"
+        >
+          <div className="p-6 bg-white border border-[#E3E6E9] rounded-2xl space-y-5 print:border-none print:shadow-none">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-[#E3E6E9] pb-4">
               <div>
-                <h2 className="text-lg font-black tracking-tight text-indigo-900 uppercase">FEEFLOW INSTITUTE OF EXCELLENCE</h2>
-                <p className="text-xs text-slate-600 mt-0.5">Corporate Office: FeeFlow Towers, JLN Marg, Jaipur, Rajasthan 302015</p>
-                <p className="text-xs text-slate-500">Branch: {receiptModal.centre_name} Centre · Tel: +91 141 289 4000</p>
-                <p className="text-xs font-semibold text-slate-700 mt-1">GSTIN: {receiptModal.gst_number}</p>
+                <h2 className="text-lg font-bold text-[#20283A]">FeeFlow Institute of Education</h2>
+                <p className="text-xs text-[#718096]">Branch: {activeStudent?.centre || 'Jaipur Main'}</p>
+                <p className="text-[11px] text-[#718096]">GSTIN: {receiptModal.gst_number || '08AAACP1234F1Z5'}</p>
               </div>
               <div className="text-right">
-                <span className="px-3 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold uppercase tracking-wider inline-block">
-                  Tax Invoice
+                <span className="text-xs font-bold text-[#1B7043] bg-[#EBF7EE] border border-[#CDEED6] px-2.5 py-1 rounded-xl">
+                  PAID & VERIFIED
                 </span>
-                <p className="text-xs text-slate-500 mt-1.5">Original for Recipient</p>
+                <p className="text-xs font-bold text-[#20283A] mt-2">Receipt: {receiptModal.receipt_no}</p>
+                <p className="text-[11px] text-[#718096]">Date: {formatDate(receiptModal.date)}</p>
               </div>
             </div>
 
-            {/* Receipt metadata grid */}
-            <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-lg border border-slate-200">
+            {/* Student metadata */}
+            <div className="grid grid-cols-2 gap-4 text-xs bg-[#FAFAFA] p-3.5 rounded-xl border border-[#E3E6E9]">
               <div>
-                <p><span className="text-slate-500 font-medium">Receipt Number:</span> <span className="font-bold text-slate-900 font-mono">{receiptModal.receipt_no}</span></p>
-                <p className="mt-1"><span className="text-slate-500 font-medium">Date of Issue:</span> <span className="font-semibold text-slate-800">{formatDate(receiptModal.date)}</span></p>
-                <p className="mt-1"><span className="text-slate-500 font-medium">Payment Mode:</span> <span className="font-semibold text-slate-800">{receiptModal.payment_method}</span></p>
-                <p className="mt-1"><span className="text-slate-500 font-medium">Bank Ref / Txn ID:</span> <span className="font-mono text-slate-700">{receiptModal.transaction_id}</span></p>
+                <span className="text-[#718096]">Student Name:</span>
+                <p className="font-bold text-[#20283A]">{activeStudent?.name}</p>
+                <span className="text-[#718096] mt-1 block">Roll Number:</span>
+                <p className="font-semibold text-[#20283A]">{activeStudent?.rollNumber}</p>
               </div>
               <div>
-                <p><span className="text-slate-500 font-medium">Student Name:</span> <span className="font-bold text-slate-900">{receiptModal.student_name}</span></p>
-                <p className="mt-1"><span className="text-slate-500 font-medium">Student ID / Roll:</span> <span className="font-mono text-slate-800">{receiptModal.student_id} ({receiptModal.roll_number})</span></p>
-                <p className="mt-1"><span className="text-slate-500 font-medium">Course & Batch:</span> <span className="font-semibold text-slate-800">{receiptModal.course} · {receiptModal.batch}</span></p>
-                <p className="mt-1"><span className="text-slate-500 font-medium">Parent / Guardian:</span> <span className="text-slate-700">{receiptModal.parent_name}</span></p>
+                <span className="text-[#718096]">Course & Batch:</span>
+                <p className="font-bold text-[#20283A]">{activeStudent?.course} ({activeStudent?.batch})</p>
+                <span className="text-[#718096] mt-1 block">Parent Phone:</span>
+                <p className="font-semibold text-[#20283A]">{activeStudent?.parentPhone}</p>
               </div>
             </div>
 
-            {/* Statutory breakdown table */}
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-100/80 text-slate-700 font-semibold uppercase text-[10px]">
+            {/* Financial breakdown */}
+            <div className="border border-[#E3E6E9] rounded-xl overflow-hidden text-xs">
+              <table className="w-full text-left">
+                <thead className="bg-[#FAFAFA] border-b border-[#E3E6E9] text-[#718096]">
                   <tr>
-                    <th className="py-2.5 px-3">Description of Service (SAC: 999293)</th>
-                    <th className="py-2.5 px-3 text-center">Instalment</th>
-                    <th className="py-2.5 px-3 text-right">Taxable Value</th>
-                    <th className="py-2.5 px-3 text-right">CGST (9%)</th>
-                    <th className="py-2.5 px-3 text-right">SGST (9%)</th>
-                    <th className="py-2.5 px-3 text-right">Total (₹)</th>
+                    <th className="p-3">Description</th>
+                    <th className="p-3 text-right">Tax Rate</th>
+                    <th className="p-3 text-right">Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[#E3E6E9]">
                   <tr>
-                    <td className="py-3 px-3">
-                      <p className="font-semibold text-slate-900">Coaching & Academic Instruction Fee</p>
-                      <p className="text-[10px] text-slate-500">Comprehensive curriculum, classroom lectures & academic material</p>
-                    </td>
-                    <td className="py-3 px-3 text-center font-medium">#{receiptModal.instalment_number || 1}</td>
-                    <td className="py-3 px-3 text-right font-medium">{formatCurrency(receiptModal.base_amount)}</td>
-                    <td className="py-3 px-3 text-right text-slate-600">{formatCurrency(receiptModal.cgst_amount)}</td>
-                    <td className="py-3 px-3 text-right text-slate-600">{formatCurrency(receiptModal.sgst_amount)}</td>
-                    <td className="py-3 px-3 text-right font-bold text-slate-900">{formatCurrency(receiptModal.total_amount)}</td>
+                    <td className="p-3">Academic Tuition Fee</td>
+                    <td className="p-3 text-right text-[#718096]">18.0%</td>
+                    <td className="p-3 text-right font-semibold">{formatCurrency(receiptModal.base_amount)}</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 text-[#718096]">CGST (Central Tax)</td>
+                    <td className="p-3 text-right text-[#718096]">9.0%</td>
+                    <td className="p-3 text-right text-[#718096]">{formatCurrency(receiptModal.cgst_amount || 0)}</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 text-[#718096]">SGST (State Tax)</td>
+                    <td className="p-3 text-right text-[#718096]">9.0%</td>
+                    <td className="p-3 text-right text-[#718096]">{formatCurrency(receiptModal.sgst_amount || 0)}</td>
+                  </tr>
+                  <tr className="bg-[#FAFAFA] font-bold text-sm">
+                    <td className="p-3 text-[#20283A]" colSpan={2}>Total Paid Amount</td>
+                    <td className="p-3 text-right text-[#1B7043]">{formatCurrency(receiptModal.total_amount)}</td>
                   </tr>
                 </tbody>
-                <tfoot className="bg-slate-50 font-bold border-t border-slate-200">
-                  <tr>
-                    <td colSpan={5} className="py-2.5 px-3 text-right text-slate-700 uppercase tracking-wider text-[11px]">
-                      Net Amount Received
-                    </td>
-                    <td className="py-2.5 px-3 text-right text-indigo-900 text-sm">
-                      {formatCurrency(receiptModal.total_amount)}
-                    </td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
 
-            {/* Note & Signatory */}
-            <div className="flex items-end justify-between pt-4 border-t border-slate-100 text-xs">
-              <div className="space-y-1 text-[11px] text-slate-500">
-                <p>• {receiptModal.tax_treatment}</p>
-                <p>• Fees once paid are subject to the institute refund policy rules.</p>
-                <p>• This is a computer generated electronic voucher authenticated by accounts system.</p>
+            {/* Footer */}
+            <div className="pt-3 border-t border-[#E3E6E9] flex items-center justify-between text-[11px] text-[#718096]">
+              <p>This is a computer-generated tax invoice. No signature required.</p>
+              <div className="flex gap-2 no-print">
+                <Button size="sm" variant="outline" onClick={() => window.print()}>
+                  <Printer className="w-3.5 h-3.5" /> Print
+                </Button>
+                <Button size="sm" onClick={() => setReceiptModal(null)}>
+                  Close
+                </Button>
               </div>
-              <div className="text-center">
-                <div className="w-32 h-10 border-b border-dashed border-slate-400 mb-1 flex items-center justify-center">
-                  <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">DIGITALLY SIGNED</span>
-                </div>
-                <p className="text-[11px] font-semibold text-slate-700">Accounts Department</p>
-                <p className="text-[10px] text-slate-400">FeeFlow Institute</p>
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex justify-end gap-3 pt-3 border-t">
-              <Button variant="outline" onClick={() => setReceiptModal(null)}>Close</Button>
-              <Button onClick={() => window.print()} className="inline-flex items-center gap-1.5">
-                <Printer className="w-4 h-4" /> Print / Save PDF
-              </Button>
             </div>
           </div>
-        )}
-      </Modal>
+        </Modal>
+      )}
     </div>
   );
 }
-

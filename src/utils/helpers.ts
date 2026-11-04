@@ -69,25 +69,35 @@ export function exportToCsv(filename: string, rows: Record<string, unknown>[]): 
 
 export function getStatusColor(status: string): string {
   switch (status) {
-    case 'Paid': return 'text-emerald-700 bg-emerald-50 border-emerald-200';
-    case 'Partially Paid': return 'text-amber-700 bg-amber-50 border-amber-200';
-    case 'Overdue': return 'text-red-700 bg-red-50 border-red-200';
+    case 'Paid':
+    case 'Success':
+    case 'Approved':
+    case 'Sent':
+      return 'text-[#1B7043] bg-[#EBF7EE] border-[#CDEED6]';
+    case 'Partially Paid':
+    case 'Partial':
+    case 'Medium':
+    case 'Pending Review':
+      return 'text-[#9A4C07] bg-[#FEF3C7] border-[#FDE68A]';
+    case 'Overdue':
+    case 'Failed':
+    case 'Rejected':
+    case 'High':
+      return 'text-[#BA2525] bg-[#FDF2F2] border-[#F9CACA]';
+    case 'Unmatched':
+      return 'text-[#E95435] bg-[#FDF1ED] border-[#F8D2C8]';
+    case 'Upcoming':
+    case 'Under Review':
+    case 'Scheduled':
+      return 'text-[#36688F] bg-[#EEF5FB] border-[#D4E6F4]';
+    case 'Processed':
+      return 'text-[#5B4699] bg-[#F5F2FC] border-[#E1D8F4]';
+    case 'Low':
+      return 'text-[#1B7043] bg-[#EBF7EE] border-[#CDEED6]';
     case 'Pending':
-    case 'Upcoming': return 'text-slate-600 bg-slate-50 border-slate-200';
-    case 'Success': return 'text-emerald-700 bg-emerald-50 border-emerald-200';
-    case 'Failed': return 'text-red-700 bg-red-50 border-red-200';
-    case 'Unmatched': return 'text-orange-700 bg-orange-50 border-orange-200';
-    case 'Under Review': return 'text-blue-700 bg-blue-50 border-blue-200';
-    case 'Approved': return 'text-emerald-700 bg-emerald-50 border-emerald-200';
-    case 'Processed': return 'text-purple-700 bg-purple-50 border-purple-200';
-    case 'Rejected': return 'text-red-700 bg-red-50 border-red-200';
-    case 'Scheduled': return 'text-blue-700 bg-blue-50 border-blue-200';
-    case 'Sent': return 'text-emerald-700 bg-emerald-50 border-emerald-200';
-    case 'Cancelled': return 'text-slate-500 bg-slate-50 border-slate-200';
-    case 'High': return 'text-red-700 bg-red-50 border-red-200';
-    case 'Medium': return 'text-amber-700 bg-amber-50 border-amber-200';
-    case 'Low': return 'text-emerald-700 bg-emerald-50 border-emerald-200';
-    default: return 'text-slate-600 bg-slate-50 border-slate-200';
+    case 'Cancelled':
+    default:
+      return 'text-[#718096] bg-[#F4F6F8] border-[#E3E6E9]';
   }
 }
 

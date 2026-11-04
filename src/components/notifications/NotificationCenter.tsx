@@ -190,13 +190,13 @@ export function NotificationCenter({ align = 'right', className = '' }: Notifica
       {/* Bell Trigger Button */}
       <button
         onClick={() => setIsOpen(prev => !prev)}
-        className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors focus:outline-hidden"
+        className="relative p-2 text-[#718096] hover:text-[#20283A] hover:bg-[#EEF0F1] rounded-xl transition-colors focus:outline-hidden"
         title="Alerts & Notifications"
         aria-label="Alerts & Notifications"
       >
-        <Bell className="w-5 h-5" />
+        <Bell className="w-4.5 h-4.5" />
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 min-w-[18px] h-[18px] bg-rose-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 shadow-xs animate-pulse">
+          <span className="absolute top-1 right-1 min-w-[17px] h-[17px] bg-[#E95435] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1 shadow-xs">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -355,16 +355,16 @@ export function NotificationCenter({ align = 'right', className = '' }: Notifica
           {/* Regular Dropdown Popover */}
           {!isFullView && (
             <div
-              className={`absolute top-full mt-2 w-84 sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden ${
+              className={`absolute top-full mt-2 w-84 sm:w-96 bg-white border border-[#E3E6E9] rounded-2xl shadow-[0_12px_32px_rgba(0,0,0,0.08)] z-50 overflow-hidden ${
                 align === 'right' ? 'right-0' : 'left-0'
               }`}
             >
               {/* Dropdown Header */}
-              <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 backdrop-blur-xs">
+              <div className="px-4 py-3.5 border-b border-[#E3E6E9] flex items-center justify-between bg-[#FAFAFA]">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm text-slate-900">Notifications</span>
+                  <span className="font-bold text-xs text-[#20283A]">Notifications</span>
                   {unreadCount > 0 && (
-                    <span className="bg-rose-100 text-rose-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                    <span className="bg-[#FDF1ED] text-[#E95435] border border-[#F8D2C8] text-[10px] font-bold px-1.5 py-0.2 rounded-full">
                       {unreadCount} new
                     </span>
                   )}
@@ -373,7 +373,7 @@ export function NotificationCenter({ align = 'right', className = '' }: Notifica
                   {unreadCount > 0 && (
                     <button
                       onClick={handleMarkAllAsRead}
-                      className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-indigo-50 transition-colors"
+                      className="text-[11px] text-[#E95435] hover:text-[#D84527] font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-[#FDF1ED] transition-colors cursor-pointer"
                       title="Mark all as read"
                     >
                       <CheckCheck className="w-3.5 h-3.5" /> Mark all read
@@ -381,7 +381,7 @@ export function NotificationCenter({ align = 'right', className = '' }: Notifica
                   )}
                   <button
                     onClick={() => setIsOpen(false)}
-                    className="p-1 text-slate-400 hover:text-slate-600 rounded-md"
+                    className="p-1 text-[#718096] hover:text-[#20283A] rounded-md cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -389,15 +389,15 @@ export function NotificationCenter({ align = 'right', className = '' }: Notifica
               </div>
 
               {/* Category tabs */}
-              <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-1 overflow-x-auto text-[11px] bg-white scrollbar-none">
+              <div className="px-3 py-2 border-b border-[#E3E6E9] flex items-center gap-1 overflow-x-auto text-[11px] bg-white scrollbar-none">
                 {categories.map(cat => (
                   <button
                     key={cat.id}
                     onClick={() => setCategory(cat.id)}
-                    className={`px-2.5 py-1 rounded-full font-medium whitespace-nowrap transition-colors ${
+                    className={`px-2.5 py-1 rounded-full font-medium whitespace-nowrap transition-colors cursor-pointer ${
                       category === cat.id
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        ? 'bg-[#E95435] text-white shadow-xs'
+                        : 'bg-[#EEF0F1] text-[#718096] hover:bg-[#E3E6E9] hover:text-[#20283A]'
                     }`}
                   >
                     {cat.label}

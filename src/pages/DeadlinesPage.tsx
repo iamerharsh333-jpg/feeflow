@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Calendar as CalendarIcon, Clock, AlertCircle, CheckCircle2,
-  Filter, Search, ArrowRight, RefreshCw, Send, AlertTriangle,
-  ChevronLeft, ChevronRight, Eye, ShieldCheck, PlayCircle, X
+  Search, ArrowRight, RefreshCw, Send, AlertTriangle,
+  ChevronLeft, ChevronRight, PlayCircle, X, ShieldCheck
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Card, Badge, Button } from '../components/ui';
+import { Card, Badge, Button, Modal } from '../components/ui';
+import { formatCurrency, formatDate } from '../utils/helpers';
 
 interface DeadlineItem {
   instalment_id: string;
@@ -87,7 +88,6 @@ export default function DeadlinesPage() {
   const [simLoading, setSimLoading] = useState(false);
   const [simResults, setSimResults] = useState<any>(null);
 
-  const isParent = user?.role === 'parent';
   const isCounsellor = (user as any)?.role === 'counsellor';
   const isAccounts = user?.role === 'accounts' || (user as any)?.role === 'accounts_executive';
   const isAdmin = (user as any)?.role === 'admin';
@@ -109,9 +109,7 @@ export default function DeadlinesPage() {
         const tasks = await api.getCounsellorDeadlines();
         setCounsellorTasks(tasks || []);
       } else {
-        const params: any = {
-          limit: 300,
-        };
+        const params: any = { limit: 300 };
         if (activeCategory !== 'all') {
           params.category = activeCategory;
         }
@@ -180,14 +178,6 @@ export default function DeadlinesPage() {
     return map;
   }, [filteredDeadlines]);
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0
-    }).format(val);
-  };
-
   // Calendar rendering helper
   const renderCalendar = () => {
     const year = selectedMonth.getFullYear();
@@ -197,13 +187,12 @@ export default function DeadlinesPage() {
 
     const days = [];
     for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="min-h-24 bg-slate-50/50 border border-slate-100 rounded-lg p-1.5" />);
+      days.push(<div key={`empty-${i}`} className="min-h-24 bg-[#FAFAFA] border border-[#E3E6E9] rounded-xl p-2" />);
     }
 
     for (let d = 1; d <= totalDays; d++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const dayItems = calendarData.get(dateStr) || [];
-      const isPast = new Date(dateStr) < new Date(new Date().toDateString());
       const isToday = dateStr === new Date().toISOString().split('T')[0];
 
       const overdueItems = dayItems.filter(i => i.category === 'overdue');
@@ -212,20 +201,20 @@ export default function DeadlinesPage() {
       days.push(
         <div
           key={dateStr}
-          className={`min-h-24 border rounded-lg p-2 transition-all flex flex-col justify-between ${
+          className={`min-h-24 border rounded-xl p-2 transition-all flex flex-col justify-between ${
             isToday
-              ? 'border-indigo-400 bg-indigo-50/20 shadow-2xs'
+              ? 'border-[#E95435] bg-[#FDF1ED]'
               : dayItems.length > 0
-              ? 'border-slate-200 bg-white hover:border-slate-300'
-              : 'border-slate-100 bg-slate-50/30'
+              ? 'border-[#E3E6E9] bg-white hover:border-[#CCD1D7]'
+              : 'border-[#E3E6E9] bg-[#FAFAFA]'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className={`text-xs font-bold ${isToday ? 'text-indigo-600' : 'text-slate-700'}`}>
+            <span className={`text-xs font-bold ${isToday ? 'text-[#E95435]' : 'text-[#20283A]'}`}>
               {d}
             </span>
             {isToday && (
-              <span className="text-[10px] bg-indigo-600 text-white font-semibold px-1.5 py-0.2 rounded">
+              <span className="text-[9px] bg-[#E95435] text-white font-bold px-1.5 py-0.2 rounded">
                 Today
               </span>
             )}
@@ -233,13 +222,13 @@ export default function DeadlinesPage() {
 
           <div className="space-y-1 my-1">
             {overdueItems.length > 0 && (
-              <div className="bg-red-50 text-red-700 border border-red-200 text-[10px] font-semibold px-1.5 py-0.5 rounded flex items-center justify-between">
+              <div className="bg-[#FDF2F2] text-[#BA2525] border border-[#F9CACA] text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center justify-between">
                 <span>Overdue</span>
                 <span>{overdueItems.length}</span>
               </div>
             )}
             {upcomingItems.length > 0 && (
-              <div className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-semibold px-1.5 py-0.5 rounded flex items-center justify-between">
+              <div className="bg-[#EEF5FB] text-[#36688F] border border-[#D4E6F4] text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center justify-between">
                 <span>Due</span>
                 <span>{upcomingItems.length}</span>
               </div>
@@ -247,7 +236,7 @@ export default function DeadlinesPage() {
           </div>
 
           {dayItems.length > 0 ? (
-            <span className="text-[10px] text-slate-500 font-medium">
+            <span className="text-[10px] text-[#718096] font-semibold tabular-nums">
               {formatCurrency(dayItems.reduce((acc, c) => acc + c.outstanding_balance, 0))}
             </span>
           ) : (
@@ -260,18 +249,16 @@ export default function DeadlinesPage() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-slate-800">
-              {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
-            </h2>
-          </div>
-          <div className="flex items-center gap-1">
+          <h2 className="text-sm font-bold text-[#20283A]">
+            {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </h2>
+          <div className="flex items-center gap-1.5">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setSelectedMonth(new Date(selectedMonth.setMonth(selectedMonth.getMonth() - 1)))}
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
             </Button>
             <Button
               variant="outline"
@@ -285,14 +272,14 @@ export default function DeadlinesPage() {
               size="sm"
               onClick={() => setSelectedMonth(new Date(selectedMonth.setMonth(selectedMonth.getMonth() + 1)))}
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </Button>
           </div>
         </div>
 
         <div className="grid grid-cols-7 gap-2">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-            <div key={day} className="text-center text-xs font-semibold text-slate-400 py-1">
+            <div key={day} className="text-center text-[10px] font-bold uppercase tracking-wider text-[#718096] py-1">
               {day}
             </div>
           ))}
@@ -304,15 +291,15 @@ export default function DeadlinesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Top Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-[#E3E6E9] rounded-2xl px-5 py-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <CalendarIcon className="w-5 h-5 text-indigo-600" />
-            Payment Deadlines & Statutory Milestones
+          <h1 className="text-sm font-bold text-[#20283A] flex items-center gap-2 leading-tight">
+            <CalendarIcon className="w-4 h-4 text-[#E95435]" />
+            Upcoming Payment Deadlines & Milestone Operations
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Tracking -7d, -3d, due-date, and escalating overdue statutory milestones under Asia/Kolkata timezone.
+          <p className="text-[11px] text-[#718096] leading-tight mt-0.5">
+            Real-time milestone tracking: -7d, -3d, due-date, +1d, +7d, +30d under Asia/Kolkata timezone
           </p>
         </div>
 
@@ -322,28 +309,28 @@ export default function DeadlinesPage() {
               variant="outline"
               size="sm"
               onClick={() => setSimModalOpen(true)}
-              className="flex items-center gap-1.5 text-xs text-purple-700 bg-purple-50 border-purple-200 hover:bg-purple-100"
+              className="text-xs flex items-center gap-1.5"
             >
-              <PlayCircle className="w-3.5 h-3.5" /> Simulate Engine Cycle
+              <PlayCircle className="w-3.5 h-3.5 text-[#E95435]" /> Simulate Engine
             </Button>
           )}
 
-          <div className="border border-slate-200 rounded-lg p-0.5 bg-slate-100 flex items-center">
+          <div className="border border-[#E3E6E9] rounded-xl p-0.5 bg-[#EEF0F1] flex items-center">
             <button
               onClick={() => setViewMode('table')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                viewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                viewMode === 'table' ? 'bg-white text-[#20283A] shadow-xs' : 'text-[#718096] hover:text-[#20283A]'
               }`}
             >
               Table View
             </button>
             <button
               onClick={() => setViewMode('calendar')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                viewMode === 'calendar' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                viewMode === 'calendar' ? 'bg-white text-[#20283A] shadow-xs' : 'text-[#718096] hover:text-[#20283A]'
               }`}
             >
-              Calendar View
+              Calendar
             </button>
           </div>
 
@@ -353,63 +340,63 @@ export default function DeadlinesPage() {
             onClick={() => { fetchSummary(); fetchDeadlines(); }}
             disabled={loading}
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#E95435]' : 'text-[#718096]'}`} />
           </Button>
         </div>
       </div>
 
-      {/* KPI Cards (Hidden for counsellor) */}
+      {/* KPI Cards */}
       {!isCounsellor && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="p-4 border-l-4 border-l-red-500 bg-linear-to-br from-red-50/20 to-transparent">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <Card className="p-5 border-l-4 border-l-[#BA2525]">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Overdue</span>
-              <AlertCircle className="w-4 h-4 text-red-500" />
+              <span className="text-[10px] font-bold text-[#718096] uppercase tracking-wider">Overdue</span>
+              <AlertCircle className="w-4 h-4 text-[#BA2525]" />
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-red-600">{summary.overdue_count}</span>
-              <span className="text-xs font-medium text-slate-500">instalments</span>
+              <span className="text-2xl font-bold text-[#BA2525] tabular-nums">{summary.overdue_count}</span>
+              <span className="text-xs font-medium text-[#718096]">instalments</span>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Outstanding: <strong className="text-red-700">{formatCurrency(summary.total_overdue_amount)}</strong>
+            <p className="text-[11px] text-[#718096] mt-1">
+              Outstanding: <strong className="text-[#BA2525]">{formatCurrency(summary.total_overdue_amount)}</strong>
             </p>
           </Card>
 
-          <Card className="p-4 border-l-4 border-l-amber-500 bg-linear-to-br from-amber-50/20 to-transparent">
+          <Card className="p-5 border-l-4 border-l-[#E95435]">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Due Today</span>
-              <Clock className="w-4 h-4 text-amber-500" />
+              <span className="text-[10px] font-bold text-[#718096] uppercase tracking-wider">Due Today</span>
+              <Clock className="w-4 h-4 text-[#E95435]" />
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-amber-600">{summary.due_today_count}</span>
-              <span className="text-xs font-medium text-slate-500">instalments</span>
+              <span className="text-2xl font-bold text-[#E95435] tabular-nums">{summary.due_today_count}</span>
+              <span className="text-xs font-medium text-[#718096]">instalments</span>
             </div>
-            <p className="text-xs text-slate-500 mt-1">Milestone 0d notifications active</p>
+            <p className="text-[11px] text-[#718096] mt-1">Milestone 0d active</p>
           </Card>
 
-          <Card className="p-4 border-l-4 border-l-blue-500 bg-linear-to-br from-blue-50/20 to-transparent">
+          <Card className="p-5 border-l-4 border-l-[#79A9D1]">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Due in 3 Days</span>
-              <Clock className="w-4 h-4 text-blue-500" />
+              <span className="text-[10px] font-bold text-[#718096] uppercase tracking-wider">Due in 3 Days</span>
+              <Clock className="w-4 h-4 text-[#79A9D1]" />
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-blue-600">{summary.due_in_3d_count}</span>
-              <span className="text-xs font-medium text-slate-500">instalments</span>
+              <span className="text-2xl font-bold text-[#36688F] tabular-nums">{summary.due_in_3d_count}</span>
+              <span className="text-xs font-medium text-[#718096]">instalments</span>
             </div>
-            <p className="text-xs text-slate-500 mt-1">Milestone -3d upcoming alerts</p>
+            <p className="text-[11px] text-[#718096] mt-1">Milestone -3d alert</p>
           </Card>
 
-          <Card className="p-4 border-l-4 border-l-indigo-500 bg-linear-to-br from-indigo-50/20 to-transparent">
+          <Card className="p-5 border-l-4 border-l-[#20283A]">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Due in 7 Days</span>
-              <CalendarIcon className="w-4 h-4 text-indigo-500" />
+              <span className="text-[10px] font-bold text-[#718096] uppercase tracking-wider">Due in 7 Days</span>
+              <CalendarIcon className="w-4 h-4 text-[#20283A]" />
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-indigo-600">{summary.due_in_7d_count}</span>
-              <span className="text-xs font-medium text-slate-500">instalments</span>
+              <span className="text-2xl font-bold text-[#20283A] tabular-nums">{summary.due_in_7d_count}</span>
+              <span className="text-xs font-medium text-[#718096]">instalments</span>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Upcoming: <strong className="text-indigo-700">{formatCurrency(summary.total_upcoming_amount)}</strong>
+            <p className="text-[11px] text-[#718096] mt-1">
+              Upcoming: <strong className="text-[#20283A]">{formatCurrency(summary.total_upcoming_amount)}</strong>
             </p>
           </Card>
         </div>
@@ -420,7 +407,7 @@ export default function DeadlinesPage() {
         <Card className="p-4">
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
             {/* Category Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
               {[
                 { id: 'all', label: 'All Deadlines' },
                 { id: 'overdue', label: 'Overdue' },
@@ -432,10 +419,10 @@ export default function DeadlinesPage() {
                 <button
                   key={tab.id}
                   onClick={() => handleCategoryChange(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
                     activeCategory === tab.id
-                      ? 'bg-indigo-600 text-white shadow-xs font-semibold'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      ? 'bg-[#20283A] text-white shadow-xs'
+                      : 'bg-[#EEF0F1] text-[#718096] hover:bg-[#E3E6E9] hover:text-[#20283A]'
                   }`}
                 >
                   {tab.label}
@@ -444,75 +431,70 @@ export default function DeadlinesPage() {
             </div>
 
             {/* Search Input */}
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search student, ID, batch..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 outline-none focus:border-indigo-500 bg-white"
-                />
-              </div>
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#718096]" />
+              <input
+                type="text"
+                placeholder="Search student, roll, batch..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-[#E3E6E9] outline-none focus:border-[#E95435] bg-white font-medium"
+              />
             </div>
           </div>
         </Card>
       )}
 
-      {/* Main Content Area */}
+      {/* Main Content: Table or Calendar */}
       {isCounsellor ? (
-        /* Counsellor Retention Tasks Mode */
-        <Card className="p-5">
+        <Card className="p-6">
           <div className="mb-4">
-            <h2 className="text-sm font-bold text-slate-900">Assigned Student Retention Follow-ups</h2>
-            <p className="text-xs text-slate-500">Counselling deadlines prioritised by dropout risk. Confidential academic view.</p>
+            <h2 className="text-sm font-bold text-[#20283A]">Assigned Student Retention Follow-ups</h2>
+            <p className="text-[11px] text-[#718096]">Confidential counselling deadlines prioritized by dropout risk.</p>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-2xl border border-[#E3E6E9]">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <thead className="bg-[#FAFAFA] text-[#718096] border-b border-[#E3E6E9] uppercase font-semibold text-[10px] tracking-wider">
                 <tr>
-                  <th className="py-2.5 px-3">Student</th>
-                  <th className="py-2.5 px-3">Batch & Centre</th>
-                  <th className="py-2.5 px-3">Risk Level</th>
-                  <th className="py-2.5 px-3">Priority</th>
-                  <th className="py-2.5 px-3">Follow-up Due Date</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3">Action</th>
+                  <th className="py-2.5 px-3.5">Student</th>
+                  <th className="py-2.5 px-3.5">Batch & Centre</th>
+                  <th className="py-2.5 px-3.5">Risk Level</th>
+                  <th className="py-2.5 px-3.5">Priority</th>
+                  <th className="py-2.5 px-3.5">Follow-up Due</th>
+                  <th className="py-2.5 px-3.5">Status</th>
+                  <th className="py-2.5 px-3.5">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#E3E6E9]">
                 {counsellorTasks.map(t => (
-                  <tr key={t.task_id} className="hover:bg-slate-50/60">
-                    <td className="py-3 px-3">
-                      <div className="font-semibold text-slate-900">{t.student_name}</div>
-                      <div className="text-[10px] text-slate-400">ID: {t.student_id}</div>
+                  <tr key={t.task_id} className="hover:bg-[#F8FAFC]">
+                    <td className="py-3 px-3.5">
+                      <div className="font-bold text-[#20283A]">{t.student_name}</div>
+                      <div className="text-[10px] text-[#718096]">ID: {t.student_id}</div>
                     </td>
-                    <td className="py-3 px-3">
-                      <div className="text-slate-800">{t.batch}</div>
-                      <div className="text-[10px] text-slate-500">{t.centre_name}</div>
+                    <td className="py-3 px-3.5">
+                      <div className="text-[#20283A] font-medium">{t.batch}</div>
+                      <div className="text-[10px] text-[#718096]">{t.centre_name}</div>
                     </td>
-                    <td className="py-3 px-3">
+                    <td className="py-3 px-3.5">
                       <Badge status={t.risk_level} />
                     </td>
-                    <td className="py-3 px-3">
-                      <span className="font-semibold text-slate-700">{t.priority}</span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="font-medium text-slate-800">
-                        {t.due_date ? new Date(t.due_date).toLocaleDateString('en-IN') : 'No Date'}
+                    <td className="py-3 px-3.5 font-semibold text-[#20283A]">{t.priority}</td>
+                    <td className="py-3 px-3.5">
+                      <div className="font-semibold text-[#20283A]">
+                        {t.due_date ? formatDate(t.due_date) : 'No Date'}
                       </div>
                       {t.overdue_days > 0 ? (
-                        <div className="text-[10px] font-bold text-red-600">{t.overdue_days}d Overdue</div>
+                        <div className="text-[10px] font-bold text-[#BA2525]">{t.overdue_days}d Overdue</div>
                       ) : (
-                        <div className="text-[10px] text-slate-500">{t.days_remaining}d remaining</div>
+                        <div className="text-[10px] text-[#718096]">{t.days_remaining}d remaining</div>
                       )}
                     </td>
-                    <td className="py-3 px-3">
+                    <td className="py-3 px-3.5">
                       <Badge status={t.status} />
                     </td>
-                    <td className="py-3 px-3">
+                    <td className="py-3 px-3.5">
                       <Button
                         size="sm"
                         variant="outline"
@@ -529,125 +511,118 @@ export default function DeadlinesPage() {
           </div>
         </Card>
       ) : viewMode === 'calendar' ? (
-        /* Calendar View */
-        <Card className="p-5">
+        <Card className="p-6">
           {renderCalendar()}
         </Card>
       ) : (
-        /* Table View */
         <Card className="overflow-hidden">
           {loading ? (
-            <div className="py-20 text-center text-slate-400 text-sm flex flex-col items-center gap-2">
-              <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
-              <span>Scanning statutory deadline milestones...</span>
+            <div className="py-20 text-center text-[#718096] text-xs flex flex-col items-center gap-2">
+              <RefreshCw className="w-5 h-5 animate-spin text-[#E95435]" />
+              <span>Scanning statutory milestones across centres...</span>
             </div>
           ) : filteredDeadlines.length === 0 ? (
-            <div className="py-20 text-center text-slate-400 text-sm flex flex-col items-center gap-2">
-              <CheckCircle2 className="w-10 h-10 text-slate-300" />
-              <span className="font-medium text-slate-700">No deadlines in this category</span>
-              <span className="text-xs text-slate-400">All student instalments are up to date under current filter.</span>
+            <div className="py-20 text-center text-[#718096] text-xs flex flex-col items-center gap-2">
+              <CheckCircle2 className="w-10 h-10 text-[#CBD5E1]" />
+              <span className="font-bold text-[#20283A]">No deadlines in this category</span>
+              <span className="text-[#718096]">All instalments are up to date under the selected filter.</span>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <thead className="bg-[#FAFAFA] text-[#718096] border-b border-[#E3E6E9] uppercase font-semibold text-[10px] tracking-wider">
                   <tr>
-                    <th className="py-3 px-3.5">Student</th>
-                    <th className="py-3 px-3.5">Instalment</th>
-                    <th className="py-3 px-3.5">Due Date & Timeline</th>
-                    <th className="py-3 px-3.5">Outstanding Balance</th>
-                    <th className="py-3 px-3.5">Parent Contact</th>
-                    <th className="py-3 px-3.5">Reminders</th>
-                    <th className="py-3 px-3.5 text-right">Actions</th>
+                    <th className="py-3 px-4">Student</th>
+                    <th className="py-3 px-4">Instalment</th>
+                    <th className="py-3 px-4">Due Date & Timeline</th>
+                    <th className="py-3 px-4">Outstanding Balance</th>
+                    <th className="py-3 px-4">Parent Contact</th>
+                    <th className="py-3 px-4">Reminders</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[#E3E6E9]">
                   {filteredDeadlines.map(item => {
                     const isOverdue = item.category === 'overdue';
                     const isDueToday = item.category === 'due_today';
                     const isDue3d = item.category === 'due_in_3d';
 
                     return (
-                      <tr key={item.instalment_id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-3 px-3.5">
-                          <div className="font-semibold text-slate-900">{item.student_name}</div>
-                          <div className="text-[10px] text-slate-500">ID: {item.student_id} • {item.batch}</div>
-                          <div className="text-[10px] text-indigo-600 font-medium">{item.centre_name}</div>
+                      <tr key={item.instalment_id} className="hover:bg-[#F8FAFC] transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-[#20283A]">{item.student_name}</div>
+                          <div className="text-[10px] text-[#718096] mt-0.5">ID: {item.student_id} · {item.batch}</div>
+                          <div className="text-[10px] text-[#36688F] font-semibold mt-0.5">{item.centre_name}</div>
                         </td>
 
-                        <td className="py-3 px-3.5">
-                          <div className="font-medium text-slate-800">Instalment #{item.instalment_number}</div>
-                          <div className="text-[10px] text-slate-400">Ref: {item.instalment_id}</div>
-                          <Badge status={item.status} className="text-[9px] mt-0.5" />
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-[#20283A]">Instalment #{item.instalment_number}</div>
+                          <div className="text-[10px] text-[#718096] mt-0.5 font-mono">{item.instalment_id}</div>
+                          <Badge status={item.status} className="mt-1" />
                         </td>
 
-                        <td className="py-3 px-3.5">
-                          <div className="font-semibold text-slate-800">
-                            {new Date(item.due_date).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric'
-                            })}
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-[#20283A]">
+                            {formatDate(item.due_date)}
                           </div>
                           {isOverdue ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.2 rounded mt-0.5">
-                              <AlertCircle className="w-2.5 h-2.5" /> {item.overdue_days} days overdue
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#BA2525] bg-[#FDF2F2] border border-[#F9CACA] px-1.5 py-0.5 rounded-md mt-1">
+                              <AlertCircle className="w-3 h-3" /> {item.overdue_days} days overdue
                             </span>
                           ) : isDueToday ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded mt-0.5">
-                              <Clock className="w-2.5 h-2.5" /> Due Today
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#E95435] bg-[#FDF1ED] border border-[#F8D2C8] px-1.5 py-0.5 rounded-md mt-1">
+                              <Clock className="w-3 h-3" /> Due Today
                             </span>
                           ) : isDue3d ? (
-                            <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded mt-0.5">
-                              {item.days_remaining} days remaining (-3d milestone)
+                            <span className="text-[10px] font-bold text-[#36688F] bg-[#EEF5FB] border border-[#D4E6F4] px-1.5 py-0.5 rounded-md mt-1 inline-block">
+                              {item.days_remaining}d remaining (-3d milestone)
                             </span>
                           ) : (
-                            <span className="text-[10px] text-slate-500">
+                            <span className="text-[10px] text-[#718096] block mt-0.5">
                               {item.days_remaining} days remaining
                             </span>
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5">
-                          <div className="font-bold text-slate-900 text-sm">
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-[#20283A] text-sm tabular-nums">
                             {formatCurrency(item.outstanding_balance)}
                           </div>
-                          <div className="text-[10px] text-slate-400">
+                          <div className="text-[10px] text-[#718096] mt-0.5">
                             Total: {formatCurrency(item.amount)}
                             {item.paid_amount > 0 && ` (Paid: ${formatCurrency(item.paid_amount)})`}
                           </div>
                         </td>
 
-                        <td className="py-3 px-3.5">
+                        <td className="py-3.5 px-4">
                           {item.parent_phone ? (
                             <div>
-                              <div className="font-medium text-slate-800">{item.parent_name || 'Parent'}</div>
-                              <div className="text-[10px] text-slate-500 font-mono">{item.parent_phone}</div>
+                              <div className="font-semibold text-[#20283A]">{item.parent_name || 'Parent'}</div>
+                              <div className="text-[10px] text-[#718096] font-mono mt-0.5">{item.parent_phone}</div>
                             </div>
                           ) : (
-                            <span className="text-slate-400 text-[10px] italic">Protected</span>
+                            <span className="text-[#718096] text-[10px] italic">Confidential</span>
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5">
-                          <div className="flex items-center gap-1 text-slate-700">
-                            <Send className="w-3 h-3 text-slate-400" />
-                            <span className="font-semibold">{item.reminders_sent}</span>
-                            <span className="text-[10px] text-slate-400">sent</span>
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5 text-[#20283A]">
+                            <Send className="w-3 h-3 text-[#718096]" />
+                            <span className="font-bold">{item.reminders_sent}</span>
+                            <span className="text-[10px] text-[#718096]">sent</span>
                           </div>
                           {item.last_reminder_date && (
-                            <div className="text-[10px] text-slate-400">
-                              Last: {new Date(item.last_reminder_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                            <div className="text-[10px] text-[#718096] mt-0.5">
+                              Last: {formatDate(item.last_reminder_date)}
                             </div>
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right">
+                        <td className="py-3.5 px-4 text-right">
                           <Button
                             size="sm"
-                            variant="primary"
                             onClick={() => navigate(`/fee-ledger?student_id=${item.student_id}`)}
-                            className="text-[11px] py-1 px-2.5 flex items-center gap-1 ml-auto"
+                            className="text-[11px] py-1 px-3 flex items-center gap-1 ml-auto"
                           >
                             <span>Ledger</span>
                             <ArrowRight className="w-3 h-3" />
@@ -665,89 +640,79 @@ export default function DeadlinesPage() {
 
       {/* Admin Simulation Modal */}
       {simModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in-0 zoom-in-95">
-            <div className="flex items-center justify-between p-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <PlayCircle className="w-5 h-5 text-purple-600" />
-                <h3 className="font-bold text-slate-900 text-sm">Automated Milestone Engine Simulation</h3>
-              </div>
-              <button
-                onClick={() => { setSimModalOpen(false); setSimResults(null); }}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
+        <Modal
+          open={simModalOpen}
+          onClose={() => { setSimModalOpen(false); setSimResults(null); }}
+          title="Automated Milestone Engine Simulation"
+          size="lg"
+        >
+          <div className="space-y-4">
+            <div className="bg-[#EEF5FB] border border-[#D4E6F4] rounded-2xl p-4 text-xs text-[#36688F] leading-relaxed">
+              <strong>Dry-Run Mode:</strong> Simulates statutory milestone evaluation (-7d, -3d, 0d, +1d, +7d, +30d) for any target date without creating real reminders or duplicate database records.
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="text-xs font-semibold text-[#20283A]">Target Simulation Date:</label>
+              <input
+                type="date"
+                value={simDate}
+                onChange={e => setSimDate(e.target.value)}
+                className="border border-[#E3E6E9] rounded-xl px-3 py-1.5 text-xs outline-none focus:border-[#E95435] bg-white font-medium"
+              />
+              <Button
+                size="sm"
+                onClick={handleTriggerSimTest}
+                disabled={simLoading}
+                className="text-xs flex items-center gap-1.5"
               >
-                <X className="w-4 h-4" />
-              </button>
+                <RefreshCw className={`w-3.5 h-3.5 ${simLoading ? 'animate-spin' : ''}`} />
+                Run Test Scan
+              </Button>
             </div>
 
-            <div className="p-4 space-y-4 overflow-y-auto flex-1">
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-800 leading-relaxed">
-                <strong>Dry-Run Mode:</strong> Simulates statutory milestone evaluation (-7d, -3d, 0d, +1d, +7d, +30d) for any target date without creating real reminders or duplicate database records.
-              </div>
-
-              <div className="flex items-center gap-3">
-                <label className="text-xs font-semibold text-slate-700">Target Simulation Date:</label>
-                <input
-                  type="date"
-                  value={simDate}
-                  onChange={e => setSimDate(e.target.value)}
-                  className="border border-slate-200 rounded-lg px-2.5 py-1 text-xs outline-none focus:border-purple-500 bg-white"
-                />
-                <Button
-                  size="sm"
-                  onClick={handleTriggerSimTest}
-                  disabled={simLoading}
-                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs flex items-center gap-1.5"
-                >
-                  <RefreshCw className={`w-3 h-3 ${simLoading ? 'animate-spin' : ''}`} />
-                  Run Test Scan
-                </Button>
-              </div>
-
-              {simResults && (
-                <div className="space-y-3 pt-2">
-                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2">
-                      <div className="font-bold text-slate-800 text-base">{simResults.active_instalments_scanned}</div>
-                      <div className="text-[10px] text-slate-400">Instalments Scanned</div>
-                    </div>
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
-                      <div className="font-bold text-purple-700 text-base">{simResults.milestones_triggered}</div>
-                      <div className="text-[10px] text-purple-600">Triggers Discovered</div>
-                    </div>
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
-                      <div className="font-bold text-amber-700 text-base">{simResults.escalations?.length || 0}</div>
-                      <div className="text-[10px] text-amber-600">Staff Escalations</div>
-                    </div>
+            {simResults && (
+              <div className="space-y-3 pt-2">
+                <div className="grid grid-cols-3 gap-2.5 text-center text-xs">
+                  <div className="bg-[#FAFAFA] border border-[#E3E6E9] rounded-xl p-3">
+                    <div className="font-bold text-[#20283A] text-lg tabular-nums">{simResults.active_instalments_scanned}</div>
+                    <div className="text-[10px] text-[#718096] uppercase font-semibold mt-0.5">Scanned</div>
                   </div>
-
-                  {simResults.triggers && simResults.triggers.length > 0 ? (
-                    <div className="border border-slate-200 rounded-lg max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
-                      {simResults.triggers.map((trig: any, idx: number) => (
-                        <div key={idx} className="p-2.5 hover:bg-slate-50">
-                          <div className="flex items-center justify-between font-semibold text-slate-900">
-                            <span>{trig.student_name} ({trig.student_id})</span>
-                            <span className="text-purple-600">{trig.stage_label}</span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 mt-0.5">
-                            Due: {trig.due_date} • Remaining: ₹{trig.remaining_balance} • Centre: {trig.centre_name}
-                          </div>
-                          <div className="text-[10px] text-slate-600 mt-1 bg-slate-100 px-2 py-0.5 rounded font-mono">
-                            Event Key: {trig.event_key}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-lg">
-                      No statutory milestones align with the selected simulation date ({simDate}).
-                    </div>
-                  )}
+                  <div className="bg-[#FDF1ED] border border-[#F8D2C8] rounded-xl p-3">
+                    <div className="font-bold text-[#E95435] text-lg tabular-nums">{simResults.milestones_triggered}</div>
+                    <div className="text-[10px] text-[#E95435] uppercase font-semibold mt-0.5">Triggers</div>
+                  </div>
+                  <div className="bg-[#FDF2F2] border border-[#F9CACA] rounded-xl p-3">
+                    <div className="font-bold text-[#BA2525] text-lg tabular-nums">{simResults.escalations?.length || 0}</div>
+                    <div className="text-[10px] text-[#BA2525] uppercase font-semibold mt-0.5">Escalations</div>
+                  </div>
                 </div>
-              )}
-            </div>
 
-            <div className="p-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+                {simResults.triggers && simResults.triggers.length > 0 ? (
+                  <div className="border border-[#E3E6E9] rounded-2xl max-h-60 overflow-y-auto divide-y divide-[#E3E6E9] text-xs">
+                    {simResults.triggers.map((trig: any, idx: number) => (
+                      <div key={idx} className="p-3 hover:bg-[#FAFAFA]">
+                        <div className="flex items-center justify-between font-bold text-[#20283A]">
+                          <span>{trig.student_name} ({trig.student_id})</span>
+                          <span className="text-[#E95435]">{trig.stage_label}</span>
+                        </div>
+                        <div className="text-[11px] text-[#718096] mt-0.5">
+                          Due: {trig.due_date} · Balance: ₹{trig.remaining_balance} · Centre: {trig.centre_name}
+                        </div>
+                        <div className="text-[10px] text-[#718096] mt-1 bg-[#EEF0F1] px-2 py-0.5 rounded font-mono inline-block">
+                          {trig.event_key}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 text-center text-xs text-[#718096] bg-[#FAFAFA] rounded-2xl border border-[#E3E6E9]">
+                    No statutory milestones align with simulation date ({simDate}).
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-3 border-t border-[#E3E6E9]">
               <Button
                 variant="outline"
                 size="sm"
@@ -757,7 +722,7 @@ export default function DeadlinesPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
