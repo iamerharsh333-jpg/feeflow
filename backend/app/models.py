@@ -347,3 +347,14 @@ class AutomationConfig(Base):
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class JobLock(Base):
+    __tablename__ = "job_locks"
+
+    job_name = Column(String(100), primary_key=True) # reminder_scheduler, risk_analysis
+    locked_by = Column(String(100), nullable=False)   # Worker or process identifier
+    locked_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False, index=True) # Lease expiration timestamp
+    status = Column(String(30), nullable=False, default="LOCKED") # LOCKED, RELEASED
+
+
+

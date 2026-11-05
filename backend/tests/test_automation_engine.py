@@ -418,3 +418,13 @@ def test_automation_api_endpoints(client, accounts_token):
     res_retry = client.post("/api/v1/automation/retry-failed", headers=headers)
     assert res_retry.status_code == 200
     assert res_retry.json()["status"] == "SUCCESS"
+
+    # 6. Simulation test-run by accounts executive
+    res_sim = client.post(
+        "/api/v1/automation/test-run",
+        json={"simulation_date": datetime.date.today().isoformat()},
+        headers=headers
+    )
+    assert res_sim.status_code == 200
+    assert res_sim.json()["status"] == "SIMULATION_SUCCESS"
+    assert res_sim.json()["dry_run"] is True

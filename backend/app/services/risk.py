@@ -1,10 +1,11 @@
 import json
 import datetime
+from decimal import Decimal
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 import httpx
 from app.config import settings
-from app.models import Student, Attendance, TestScore, CounsellorTask, Instalment, AuditLog
+from app.models import Student, Attendance, TestScore, CounsellorTask, Instalment, AuditLog, Centre
 from app.services.currency import to_decimal, ZERO, PAISE
 
 def rule_based_risk_assessment(
@@ -155,10 +156,13 @@ def calculate_student_risk_score(student: Student, db: Session) -> Dict[str, Any
         "max_overdue_days": max_overdue_days,
         "attendance_rate": att_pct,
         "attendance_trend": att_trend,
+        "attendance_baseline_rate": round(first_pct, 1) if total_classes >= 6 else att_pct,
+        "attendance_recent_rate": round(second_pct, 1) if total_classes >= 6 else att_pct,
         "total_classes": total_classes,
         "test_average_percent": avg_score_pct,
         "test_score_trend": score_trend,
         "test_count": len(scores),
+        "recent_test_scores": [round(s.marks_obtained / s.max_marks * 100.0, 1) for s in scores[-3:]] if scores else [],
         "score_breakdown": {
             "fee_risk_points": fee_points,
             "attendance_risk_points": att_points,
@@ -235,63 +239,90 @@ async def assess_student_risk(student: Student, db: Session) -> Dict[str, Any]:
             pass
 
     # Safety: Automatically create or update CounsellorTask ONLY (no fee changes, no parent messages)
-    if result["risk_level"] in ["High", "Medium"]:
-        existing_task = db.query(CounsellorTask).filter(
-            CounsellorTask.student_id == student.id,
-            CounsellorTask.status.in_(["Open", "In Progress", "Unreviewed"])
-        ).first()
-
-        reasons_json = json.dumps(result["risk_reasons"])
-        evidence_json = json.dumps(result["evidence"])
-        priority = "Urgent" if result["risk_score"] >= 75.0 else ("High" if result["risk_level"] == "High" else "Medium")
-        due_date = datetime.date.today() + datetime.timedelta(days=2 if priority in ["Urgent", "High"] else 5)
-
-        if existing_task:
-            existing_task.risk_level = result["risk_level"]
-            existing_task.risk_score = result["risk_score"]
-            existing_task.risk_reasons = reasons_json
-            existing_task.evidence = evidence_json
-            existing_task.priority = priority
-            existing_task.due_date = due_date
-        else:
-            new_task = CounsellorTask(
-                student_id=student.id,
-                risk_level=result["risk_level"],
-                risk_score=result["risk_score"],
-                risk_reasons=reasons_json,
-                evidence=evidence_json,
-                priority=priority,
-                due_date=due_date,
-                status="Open"
-            )
-            db.add(new_task)
-            db.flush()
-            
-            db.add(AuditLog(
-                entity_name="CounsellorTask",
-                entity_id=str(new_task.id),
-                action="RISK_TASK_CREATED",
-                changed_by="RiskEngine",
-                new_values=f"Student: {student.id}, Score: {result['risk_score']}, Level: {result['risk_level']}"
-            ))
-
-        # Alert staff ONLY for high-risk dropout (NEVER send to parent/student)
-        if result["risk_level"] == "High":
-            try:
-                from app.services.notifications import notify_high_risk_dropout
-                task_id = new_task.id if 'new_task' in locals() else existing_task.id
-                notify_high_risk_dropout(
-                    db=db,
-                    student=student,
-                    task_id=task_id,
-                    score=int(result["risk_score"])
-                )
-            except Exception:
-                pass
-
-        db.commit()
-
+    create_or_update_counsellor_task(student, result, db)
     return result
+
+
+def create_or_update_counsellor_task(
+    student: Student,
+    result: Dict[str, Any],
+    db: Session
+) -> Optional[CounsellorTask]:
+    """
+    Creates or updates a CounsellorTask when a student meets risk thresholds (High or Medium).
+    Ensures idempotency: never creates duplicate open tasks for the same student on repeated scans.
+    Strictly avoids fee modification, parent messaging, or enrolment disruption.
+    """
+    if result.get("risk_level") not in ["High", "Medium"]:
+        return None
+
+    # Check for existing open task
+    existing_task = db.query(CounsellorTask).filter(
+        CounsellorTask.student_id == student.id,
+        CounsellorTask.status.in_(["Open", "In Progress", "Unreviewed"])
+    ).first()
+
+    # If the student's risk flag was already reviewed and marked False Positive, honor the dismissal and do not reopen
+    if not existing_task:
+        dismissed_task = db.query(CounsellorTask).filter(
+            CounsellorTask.student_id == student.id,
+            CounsellorTask.status.in_(["False Positive", "Dismissed - False Positive"])
+        ).first()
+        if dismissed_task:
+            return None
+
+    reasons_json = json.dumps(result.get("risk_reasons", []))
+    evidence_json = json.dumps(result.get("evidence", {}))
+    priority = "Urgent" if result.get("risk_score", 0) >= 75.0 else ("High" if result.get("risk_level") == "High" else "Medium")
+    due_date = datetime.date.today() + datetime.timedelta(days=2 if priority in ["Urgent", "High"] else 5)
+
+    if existing_task:
+        existing_task.risk_level = result["risk_level"]
+        existing_task.risk_score = result["risk_score"]
+        existing_task.risk_reasons = reasons_json
+        existing_task.evidence = evidence_json
+        existing_task.priority = priority
+        existing_task.due_date = due_date
+        db.commit()
+        return existing_task
+
+    new_task = CounsellorTask(
+        student_id=student.id,
+        risk_level=result["risk_level"],
+        risk_score=result["risk_score"],
+        risk_reasons=reasons_json,
+        evidence=evidence_json,
+        priority=priority,
+        due_date=due_date,
+        status="Open"
+    )
+    db.add(new_task)
+    db.flush()
+
+    db.add(AuditLog(
+        entity_name="CounsellorTask",
+        entity_id=str(new_task.id),
+        action="RISK_TASK_CREATED",
+        changed_by="RiskEngine",
+        new_values=f"Student: {student.id}, Score: {result['risk_score']}, Level: {result['risk_level']}"
+    ))
+
+    # Alert staff ONLY for high-risk dropout (NEVER send to parent/student)
+    if result["risk_level"] == "High":
+        try:
+            from app.services.notifications import notify_high_risk_dropout
+            notify_high_risk_dropout(
+                db=db,
+                student=student,
+                task_id=new_task.id,
+                score=int(result["risk_score"])
+            )
+        except Exception:
+            pass
+
+    db.commit()
+    db.refresh(new_task)
+    return new_task
 
 
 def run_daily_ai_risk_analysis(db: Session) -> Dict[str, Any]:
@@ -319,7 +350,9 @@ def run_daily_ai_risk_analysis(db: Session) -> Dict[str, Any]:
             elif res.get("risk_level") == "Medium":
                 medium_risk_count += 1
             if res.get("risk_level") in ["High", "Medium"]:
-                tasks_updated += 1
+                task = create_or_update_counsellor_task(s, res, db)
+                if task:
+                    tasks_updated += 1
         except Exception:
             pass
 
@@ -342,6 +375,163 @@ def run_daily_ai_risk_analysis(db: Session) -> Dict[str, Any]:
         "tasks_updated": tasks_updated,
         "duration_ms": duration
     }
+
+
+def seed_demo_dropout_risk_student(db: Session, student_id: str = "STU-0999") -> Student:
+    """
+    Dedicated demo seed scenario for AI Dropout-Risk evaluation:
+    - Fictional student: Rohan Verma (ID: STU-0999, JEE 2027 Evening, Jaipur Main)
+    - Attendance: 85.0% baseline declining to 58.3% recent (120 class sessions)
+    - Test scores: 3 declining assessments (72.0%, 61.0%, 43.0%)
+    - Fee status: 1 instalment overdue by 25 days (₹30,000)
+    - Receives a High Risk classification based on explainable rule-based scoring.
+    - Idempotent and repeatable: does not overwrite other students.
+    """
+    today = datetime.date.today()
+    centre = db.query(Centre).filter(Centre.id == 1).first()
+    if not centre:
+        centre = db.query(Centre).first()
+    centre_id = centre.id if centre else 1
+
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        student = Student(
+            id=student_id,
+            roll_number="JEE27-EVE-0999",
+            name="Rohan Verma",
+            course="JEE 2027",
+            batch="Evening",
+            centre_id=centre_id,
+            parent_name="Suresh Verma",
+            parent_phone="9822334455",
+            parent_email="suresh.verma@example.com",
+            total_fee=Decimal("120000.00"),
+            enrollment_date=datetime.date(2025, 4, 1)
+        )
+        db.add(student)
+        db.flush()
+
+        from app.models import User
+        from app.auth import hash_password
+        existing_user = db.query(User).filter(User.identifier == student_id).first()
+        if not existing_user:
+            db.add(User(
+                identifier=student_id,
+                full_name=student.name,
+                hashed_password=hash_password("Student@123"),
+                role="student",
+                centre_id=centre_id,
+                is_active=True
+            ))
+
+    # 1. Seed 4 Instalments: 1 overdue by 25 days
+    db.query(Instalment).filter(Instalment.student_id == student_id).delete()
+    db.flush()
+
+    ins1 = Instalment(
+        id=f"INS-{student_id[4:]}-1",
+        student_id=student_id,
+        instalment_number=1,
+        due_date=today - datetime.timedelta(days=120),
+        amount=Decimal("30000.00"),
+        paid_amount=Decimal("30000.00"),
+        status="Paid",
+        paid_date=today - datetime.timedelta(days=122),
+        receipt_no=f"REC-DEMO-{student_id[4:]}-01"
+    )
+    ins2 = Instalment(
+        id=f"INS-{student_id[4:]}-2",
+        student_id=student_id,
+        instalment_number=2,
+        due_date=today - datetime.timedelta(days=60),
+        amount=Decimal("30000.00"),
+        paid_amount=Decimal("30000.00"),
+        status="Paid",
+        paid_date=today - datetime.timedelta(days=58),
+        receipt_no=f"REC-DEMO-{student_id[4:]}-02"
+    )
+    ins3 = Instalment(
+        id=f"INS-{student_id[4:]}-3",
+        student_id=student_id,
+        instalment_number=3,
+        due_date=today - datetime.timedelta(days=25), # Exactly 25 days overdue
+        amount=Decimal("30000.00"),
+        paid_amount=Decimal("0.00"),
+        status="Overdue"
+    )
+    ins4 = Instalment(
+        id=f"INS-{student_id[4:]}-4",
+        student_id=student_id,
+        instalment_number=4,
+        due_date=today + datetime.timedelta(days=60),
+        amount=Decimal("30000.00"),
+        paid_amount=Decimal("0.00"),
+        status="Upcoming"
+    )
+    db.add_all([ins1, ins2, ins3, ins4])
+
+    # 2. Seed Attendance: 60 sessions first half (85.0%), 60 sessions second half (58.3%)
+    db.query(Attendance).filter(Attendance.student_id == student_id).delete()
+    db.flush()
+
+    attendances = []
+    for d in range(60):
+        attendances.append(Attendance(
+            student_id=student_id,
+            batch=student.batch,
+            date=today - datetime.timedelta(days=150 - d),
+            status="Present" if d < 51 else "Absent"
+        ))
+    for d in range(60):
+        attendances.append(Attendance(
+            student_id=student_id,
+            batch=student.batch,
+            date=today - datetime.timedelta(days=90 - d),
+            status="Present" if d < 35 else "Absent"
+        ))
+    db.add_all(attendances)
+
+    # 3. Seed 3 Declining Test Scores (72%, 61%, 43%)
+    db.query(TestScore).filter(TestScore.student_id == student_id).delete()
+    db.flush()
+
+    t1 = TestScore(
+        student_id=student_id,
+        test_name="Physics Periodic Assessment 1",
+        test_date=today - datetime.timedelta(days=21),
+        subject="Physics",
+        max_marks=100.0,
+        marks_obtained=72.0
+    )
+    t2 = TestScore(
+        student_id=student_id,
+        test_name="Chemistry Periodic Assessment 1",
+        test_date=today - datetime.timedelta(days=14),
+        subject="Chemistry",
+        max_marks=100.0,
+        marks_obtained=61.0
+    )
+    t3 = TestScore(
+        student_id=student_id,
+        test_name="Mathematics Periodic Assessment 1",
+        test_date=today - datetime.timedelta(days=7),
+        subject="Mathematics",
+        max_marks=100.0,
+        marks_obtained=43.0
+    )
+    db.add_all([t1, t2, t3])
+    db.commit()
+
+    # Reset any previous counsellor tasks for demo student so scenario reset is clean
+    db.query(CounsellorTask).filter(CounsellorTask.student_id == student_id).delete()
+    db.flush()
+
+    # Calculate risk score and initialize counsellor task
+    res = calculate_student_risk_score(student, db)
+    create_or_update_counsellor_task(student, res, db)
+    db.commit()
+    db.refresh(student)
+    return student
 
 
 def dismiss_risk_task(task_id: int, reason: str, db: Session, dismissed_by: str = "Accounts/Counsellor") -> CounsellorTask:

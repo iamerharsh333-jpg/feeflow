@@ -162,14 +162,15 @@ def dismiss_task(
 @router.post("/test-run")
 def simulate_automation_test_run(
     body: Optional[AutomationTestRunRequest] = None,
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("accounts_executive", "admin")),
     db: Session = Depends(get_db)
 ):
     """
-    Admin-restricted manual simulation test-run:
-    - Scans all active instalments against statutory milestone rules.
+    Manual simulation test-run for accounts executives and admins:
+    - Scans active instalments against statutory milestone rules.
     - Dry-run: does not dispatch actual messages or duplicate database alerts.
     - Accurately details which milestones trigger, balances calculated, and escalation routing.
+    - Enforces centre isolation for accounts executives.
     """
     from app.services.reminders import AUTOMATION_REMINDER_OFFSETS, get_kolkata_today
     from app.models import Instalment, Student
@@ -184,10 +185,14 @@ def simulate_automation_test_run(
                 detail=f"Invalid simulation_date format: {body.simulation_date}. Expected YYYY-MM-DD."
             )
 
-    active_instalments = db.query(Instalment).join(Student, Instalment.student_id == Student.id).filter(
+    query = db.query(Instalment).join(Student, Instalment.student_id == Student.id).filter(
         Instalment.status != "Paid",
         Instalment.paid_amount < Instalment.amount
-    ).all()
+    )
+    if current_user.role == "accounts_executive" and current_user.centre_id:
+        query = query.filter(Student.centre_id == current_user.centre_id)
+
+    active_instalments = query.all()
 
     triggers = []
     escalations = []

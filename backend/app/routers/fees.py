@@ -26,6 +26,8 @@ def get_fee_ledger(
         raise HTTPException(status_code=404, detail="Student not found")
 
     # Role check
+    if current_user.role == "counsellor":
+        raise HTTPException(status_code=403, detail="Forbidden: Counsellors do not have authorization to view financial ledgers.")
     if current_user.role == "parent" and student.parent_phone != current_user.identifier:
         raise HTTPException(status_code=403, detail="Forbidden: You can only view your linked student's ledger.")
     if current_user.role == "student" and student.id != current_user.identifier:

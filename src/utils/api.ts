@@ -257,6 +257,12 @@ export const api = {
       body: JSON.stringify({ status, notes, dismissal_reason }),
     }),
 
+  runRiskScan: () =>
+    apiRequest('/risk/run-scan', { method: 'POST' }),
+
+  seedDemoRiskStudent: () =>
+    apiRequest('/risk/seed-demo', { method: 'POST' }),
+
   // Dashboard
   getDashboardSummary: (centreId?: number) => {
     const sp = centreId ? `?centre_id=${centreId}` : '';
@@ -384,11 +390,6 @@ export const api = {
 
   runReminderCycle: () =>
     apiRequest('/automation/run-reminders', {
-      method: 'POST',
-    }),
-
-  runRiskScan: () =>
-    apiRequest('/automation/run-risk-scan', {
       method: 'POST',
     }),
 

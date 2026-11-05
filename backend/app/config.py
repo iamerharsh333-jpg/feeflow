@@ -52,4 +52,10 @@ class Settings:
     # Taxation (Configurable GST rate percentage)
     GST_RATE: Decimal = Decimal(os.getenv("GST_RATE", "18.0"))
 
+    # Worker & Automation Execution
+    STANDALONE_WORKER_MODE: bool = os.getenv("STANDALONE_WORKER_MODE", "true").lower() in ("true", "1", "yes")
+    REMINDER_INTERVAL_MINUTES: int = int(os.getenv("REMINDER_INTERVAL_MINUTES", "5"))
+    RISK_SCAN_INTERVAL_HOURS: int = int(os.getenv("RISK_SCAN_INTERVAL_HOURS", "24"))
+    JOB_LOCK_LEASE_SECONDS: int = int(os.getenv("JOB_LOCK_LEASE_SECONDS", "300"))
+
 settings = Settings()

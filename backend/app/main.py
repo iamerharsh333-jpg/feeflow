@@ -67,16 +67,24 @@ async def lifespan(app: FastAPI):
         init_db.close()
     
     # Start scheduler: 5-minute reminder cycles + daily risk analysis
-    scheduler.add_job(scheduled_reminder_job, "interval", minutes=5, id="reminder_check", replace_existing=True)
-    scheduler.add_job(scheduled_risk_job, "interval", hours=24, id="daily_risk_scan", replace_existing=True)
-    scheduler.start()
-    logger.info("APScheduler background worker started (5-min reminder cycles + 24-hr risk scans).")
+    # When STANDALONE_WORKER_MODE is enabled (default), the scheduler runs in a separate process via `python -m app.worker`.
+    if not settings.STANDALONE_WORKER_MODE:
+        scheduler.add_job(scheduled_reminder_job, "interval", minutes=settings.REMINDER_INTERVAL_MINUTES, id="reminder_check", replace_existing=True)
+        scheduler.add_job(scheduled_risk_job, "interval", hours=settings.RISK_SCAN_INTERVAL_HOURS, id="daily_risk_scan", replace_existing=True)
+        scheduler.start()
+        logger.info(
+            f"APScheduler background worker started in FastAPI lifespan "
+            f"({settings.REMINDER_INTERVAL_MINUTES}-min reminders, {settings.RISK_SCAN_INTERVAL_HOURS}-hr risk scans)."
+        )
+    else:
+        logger.info("FastAPI running in STANDALONE_WORKER_MODE=True. In-process scheduler disabled (managed by app.worker).")
     
     yield
     
     # Shutdown
-    scheduler.shutdown(wait=False)
-    logger.info("APScheduler stopped.")
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
+        logger.info("APScheduler stopped.")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

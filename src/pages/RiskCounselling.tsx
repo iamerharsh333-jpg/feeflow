@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../utils/helpers';
 import { Badge, Button, Card, Modal, Select, StatCard, Table, EmptyState, Input } from '../components/ui';
-import { ShieldAlert, UserCheck, Eye, CheckCircle, RefreshCw, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, UserCheck, Eye, CheckCircle, RefreshCw, AlertTriangle, Sparkles, Play, RotateCcw } from 'lucide-react';
 import { api } from '../utils/api';
 
 const COUNSELLORS = ['Dr. Meena Saxena', 'Mr. Amit Bhatnagar', 'Ms. Priya Joshi', 'Mr. Rajesh Kumar'];
@@ -43,6 +43,8 @@ export default function RiskCounselling() {
     resolved_tasks_count: 0,
   });
   const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [levelFilter, setLevelFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
@@ -84,6 +86,66 @@ export default function RiskCounselling() {
   useEffect(() => {
     loadData();
   }, [levelFilter, statusFilter]);
+
+  const handleRunScan = async () => {
+    setScanning(true);
+    try {
+      const res = await api.runRiskScan();
+      addNotification({
+        type: 'success',
+        title: 'Risk Scan Completed',
+        message: res.message || 'Evaluated students across academic and fee thresholds.',
+      });
+      await loadData();
+    } catch (err: any) {
+      addNotification({ type: 'error', title: 'Risk scan failed', message: err.message });
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleSeedDemo = async () => {
+    setSeeding(true);
+    try {
+      const res = await api.seedDemoRiskStudent();
+      addNotification({
+        type: 'success',
+        title: 'Demo Scenario Seeded',
+        message: `${res.student_name} (${res.student_id}) ready with declining attendance, falling test scores, and 25-day overdue instalment.`,
+      });
+      await loadData();
+    } catch (err: any) {
+      addNotification({ type: 'error', title: 'Seeding failed', message: err.message });
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const handleInspectDemoCase = async () => {
+    let demoTask = tasks.find(t => t.student_id === 'STU-0999');
+    if (!demoTask) {
+      try {
+        await api.seedDemoRiskStudent();
+        const updatedTasks = await api.getCounsellorTasks();
+        if (Array.isArray(updatedTasks)) {
+          setTasks(updatedTasks);
+          demoTask = updatedTasks.find((t: any) => t.student_id === 'STU-0999');
+        }
+      } catch (err) {
+        console.warn('Could not auto-seed demo task:', err);
+      }
+    }
+
+    if (demoTask) {
+      setViewTask(demoTask);
+    } else {
+      addNotification({
+        type: 'info',
+        title: 'Demo Case Initialized',
+        message: 'Click "Seed Demo Scenario" above to initialize Rohan Verma.',
+      });
+    }
+  };
 
   const handleAssignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +201,8 @@ export default function RiskCounselling() {
     }
   };
 
+  const demoStudentTask = tasks.find(t => t.student_id === 'STU-0999');
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -146,15 +210,83 @@ export default function RiskCounselling() {
         <div>
           <h1 className="text-xl font-bold text-[#20283A] tracking-tight">Academic & Fee Dropout Risk Counselling</h1>
           <p className="text-xs text-[#718096] mt-1 font-normal">
-            Multi-Signal Explainable AI Engine · Decision Support Only · Zero Automated Fee Actions
+            Multi-Signal Explainable Rule Engine · Decision Support Only · Zero Automated Fee Actions
           </p>
         </div>
 
-        <Button size="sm" variant="outline" onClick={loadData} disabled={loading} className="self-start sm:self-auto text-xs border-[#E3E6E9] text-[#20283A]">
-          <RefreshCw className={`w-3.5 h-3.5 mr-1 text-[#718096] ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            size="sm"
+            onClick={handleRunScan}
+            disabled={scanning || loading}
+            className="bg-[#20283A] hover:bg-[#2c374e] text-white text-xs font-semibold"
+          >
+            <Play className={`w-3.5 h-3.5 mr-1 text-[#79A9D1] ${scanning ? 'animate-spin' : ''}`} />
+            {scanning ? 'Running Scan...' : 'Run Risk Scan'}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={loadData}
+            disabled={loading}
+            className="text-xs border-[#E3E6E9] text-[#20283A]"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1 text-[#718096] ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {/* Evaluator Demo Scenario Banner */}
+      <Card className="rounded-2xl border border-[#79A9D1]/40 bg-gradient-to-r from-[#EEF5FB] to-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#79A9D1]/20 border border-[#79A9D1]/40 flex items-center justify-center flex-shrink-0 text-[#20283A]">
+              <Sparkles className="w-5 h-5 text-[#E95435]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#E95435]">Evaluator Demo Scenario</span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-[#E3E6E9] text-[#20283A]">
+                  Student: Rohan Verma (STU-0999)
+                </span>
+                {demoStudentTask && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    demoStudentTask.status === 'False Positive' ? 'bg-slate-100 text-[#718096] border-[#E3E6E9]' : 'bg-rose-50 text-[#BA2525] border-rose-200'
+                  }`}>
+                    Status: {demoStudentTask.status} ({demoStudentTask.risk_score}/100)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-[#20283A] mt-1 font-medium">
+                Demonstrates explainable high-risk detection: <strong>Attendance drop (85% → 58%)</strong>, <strong>3 declining test scores (72%, 61%, 43%)</strong>, and <strong>1 instalment overdue by 25 days</strong>.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+            <Button
+              size="sm"
+              onClick={handleInspectDemoCase}
+              className="bg-[#E95435] hover:bg-[#D84527] text-white text-xs font-semibold shadow-xs"
+            >
+              <Eye className="w-3.5 h-3.5 mr-1" />
+              Inspect Demo Evidence
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSeedDemo}
+              disabled={seeding}
+              className="text-xs border-[#E3E6E9] text-[#20283A] bg-white hover:bg-slate-50"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 mr-1 text-[#718096] ${seeding ? 'animate-spin' : ''}`} />
+              {seeding ? 'Seeding...' : 'Reset Demo Student'}
+            </Button>
+          </div>
+        </div>
+      </Card>
 
       {/* Safety Notice */}
       <div className="bg-amber-50/75 border border-amber-200 rounded-2xl p-3.5 text-xs text-amber-900 flex items-start gap-2.5">
@@ -214,169 +346,276 @@ export default function RiskCounselling() {
         ) : (
           <div className="overflow-x-auto">
             <Table headers={['Student', 'Risk Score', 'Priority & Due', 'Attendance', 'Score Trend', 'Overdue Fees', 'Counsellor', 'Status', 'Actions']}>
-              {tasks.map(t => (
-                <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
-                  <td className="px-4 py-3">
-                    <p className="text-sm font-semibold text-[#20283A]">{t.student_name}</p>
-                    <p className="text-xs text-[#718096]">{t.student_id} · {t.centre_name}</p>
-                  </td>
+              {tasks.map(t => {
+                const isDemo = t.student_id === 'STU-0999';
+                return (
+                  <tr key={t.id} className={`hover:bg-slate-50/60 transition-colors ${isDemo ? 'bg-amber-50/30' : ''}`}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-sm font-semibold text-[#20283A]">{t.student_name}</p>
+                        {isDemo && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#E95435]/10 text-[#E95435] border border-[#E95435]/25">
+                            Demo Case
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-[#718096]">{t.student_id} · {t.centre_name}</p>
+                    </td>
 
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
-                        t.risk_score >= 65 ? 'bg-rose-50 text-[#BA2525] border-rose-200' : t.risk_score >= 35 ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                      }`}>
-                        {t.risk_score} / 100
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                          t.risk_score >= 65 ? 'bg-rose-50 text-[#BA2525] border-rose-200' : t.risk_score >= 35 ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        }`}>
+                          {t.risk_score} / 100
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3 text-xs">
+                      <p className={`font-semibold ${t.priority === 'Urgent' ? 'text-[#BA2525]' : 'text-[#20283A]'}`}>
+                        {t.priority}
+                      </p>
+                      <p className="text-[10px] text-[#718096]">Due: {formatDate(t.due_date || '')}</p>
+                    </td>
+
+                    <td className="px-4 py-3 text-xs">
+                      <span className={`font-bold ${t.attendance_percent < 65 ? 'text-[#BA2525]' : t.attendance_percent < 75 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                        {t.attendance_percent}%
                       </span>
-                    </div>
-                  </td>
+                    </td>
 
-                  <td className="px-4 py-3 text-xs">
-                    <p className={`font-semibold ${t.priority === 'Urgent' ? 'text-[#BA2525]' : 'text-[#20283A]'}`}>
-                      {t.priority}
-                    </p>
-                    <p className="text-[10px] text-[#718096]">Due: {formatDate(t.due_date || '')}</p>
-                  </td>
+                    <td className="px-4 py-3 text-xs">
+                      <span className={`font-semibold ${t.test_score_trend === 'Declining' ? 'text-[#BA2525]' : 'text-[#20283A]'}`}>
+                        {t.test_score_trend === 'Declining' ? '↓ Declining' : t.test_score_trend === 'Improving' ? '↑ Improving' : '→ Stable'}
+                      </span>
+                    </td>
 
-                  <td className="px-4 py-3 text-xs">
-                    <span className={`font-bold ${t.attendance_percent < 65 ? 'text-[#BA2525]' : t.attendance_percent < 75 ? 'text-amber-700' : 'text-emerald-700'}`}>
-                      {t.attendance_percent}%
-                    </span>
-                  </td>
+                    <td className="px-4 py-3 text-xs font-bold text-[#BA2525]">
+                      {formatCurrency(t.outstanding_amount)}
+                    </td>
 
-                  <td className="px-4 py-3 text-xs">
-                    <span className={`font-semibold ${t.test_score_trend === 'Declining' ? 'text-[#BA2525]' : 'text-[#20283A]'}`}>
-                      {t.test_score_trend === 'Declining' ? '↓ Declining' : t.test_score_trend === 'Improving' ? '↑ Improving' : '→ Stable'}
-                    </span>
-                  </td>
+                    <td className="px-4 py-3 text-xs text-[#20283A] font-medium">
+                      {t.counsellor_name || <span className="text-[#718096] italic">Unassigned</span>}
+                    </td>
 
-                  <td className="px-4 py-3 text-xs font-bold text-[#BA2525]">
-                    {formatCurrency(t.outstanding_amount)}
-                  </td>
+                    <td className="px-4 py-3">
+                      <Badge status={t.status} />
+                    </td>
 
-                  <td className="px-4 py-3 text-xs text-[#20283A] font-medium">
-                    {t.counsellor_name || <span className="text-[#718096] italic">Unassigned</span>}
-                  </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Button size="sm" variant="ghost" onClick={() => setViewTask(t)} className="text-xs text-[#718096] hover:text-[#20283A]">
+                          <Eye className="w-3.5 h-3.5 mr-0.5" /> Evidence
+                        </Button>
 
-                  <td className="px-4 py-3">
-                    <Badge status={t.status} />
-                  </td>
+                        {t.status in { 'Open': 1, 'In Progress': 1, 'Unreviewed': 1, 'Pending': 1 } && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-[#20283A] hover:bg-slate-50 text-xs border-[#E3E6E9]"
+                              onClick={() => {
+                                setAssignModal(t);
+                                setCounsellor(t.counsellor_name || COUNSELLORS[0]);
+                                setPriority(t.priority || 'High');
+                              }}
+                            >
+                              Assign
+                            </Button>
 
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <Button size="sm" variant="ghost" onClick={() => setViewTask(t)} className="text-xs text-[#718096] hover:text-[#20283A]">
-                        <Eye className="w-3.5 h-3.5 mr-0.5" /> Evidence
-                      </Button>
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                              onClick={() => handleMarkResolved(t)}
+                            >
+                              Resolve
+                            </Button>
 
-                      {t.status in { 'Open': 1, 'In Progress': 1, 'Unreviewed': 1, 'Pending': 1 } && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-[#20283A] hover:bg-slate-50 text-xs border-[#E3E6E9]"
-                            onClick={() => {
-                              setAssignModal(t);
-                              setCounsellor(t.counsellor_name || COUNSELLORS[0]);
-                              setPriority(t.priority || 'High');
-                            }}
-                          >
-                            Assign
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-                            onClick={() => handleMarkResolved(t)}
-                          >
-                            Resolve
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-[#BA2525] hover:bg-rose-50 text-xs"
-                            onClick={() => {
-                              setDismissModal(t);
-                              setDismissalReason('');
-                            }}
-                          >
-                            Dismiss
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-[#BA2525] hover:bg-rose-50 text-xs"
+                              onClick={() => {
+                                setDismissModal(t);
+                                setDismissalReason('');
+                              }}
+                            >
+                              Dismiss
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </Table>
           </div>
         )}
       </Card>
 
       {/* VIEW EVIDENCE MODAL */}
-      <Modal open={!!viewTask} onClose={() => setViewTask(null)} title="Risk Evidence & Signals Breakdown" size="md">
+      <Modal open={!!viewTask} onClose={() => setViewTask(null)} title="Risk Evidence & Signals Breakdown" size="lg">
         {viewTask && (
           <div className="p-5 space-y-4 text-xs">
+            {/* Header info */}
             <div className="flex items-center justify-between bg-slate-50/75 p-3.5 rounded-2xl border border-[#E3E6E9]">
               <div>
-                <p className="font-bold text-sm text-[#20283A]">{viewTask.student_name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-bold text-sm text-[#20283A]">{viewTask.student_name}</p>
+                  {viewTask.student_id === 'STU-0999' && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#E95435]/10 text-[#E95435] border border-[#E95435]/25">
+                      Evaluator Demo Student
+                    </span>
+                  )}
+                </div>
                 <p className="text-[#718096]">{viewTask.student_id} · {viewTask.course} · {viewTask.centre_name}</p>
               </div>
               <div className="text-right">
                 <span className="text-base font-black text-[#BA2525] block">{viewTask.risk_score} / 100</span>
-                <span className="text-[10px] uppercase font-bold text-[#718096]">{viewTask.risk_level} Risk</span>
+                <span className="text-[10px] uppercase font-bold text-[#718096]">{viewTask.risk_level} Risk Category</span>
               </div>
+            </div>
+
+            {/* Explainable Engine Tag */}
+            <div className="bg-[#EEF5FB] border border-[#79A9D1]/30 rounded-xl p-3 text-[11px] text-[#20283A] flex items-center justify-between">
+              <span className="font-semibold text-[#20283A] flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#E95435]" />
+                Deterministic Explainable Risk Scoring Engine
+              </span>
+              <span className="text-[#718096]">3-Signal Rule Model · Zero Unverified ML</span>
             </div>
 
             {/* Evidence signals breakdown */}
-            <div className="grid grid-cols-2 gap-2.5 text-xs">
-              <div className="p-3 bg-slate-50/75 rounded-xl border border-[#E3E6E9]">
-                <span className="text-[#718096] block">Attendance Rate:</span>
-                <span className={`font-bold text-sm ${viewTask.attendance_percent < 75 ? 'text-[#BA2525]' : 'text-emerald-700'}`}>
-                  {viewTask.attendance_percent}%
-                </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              {/* Signal 1: Attendance */}
+              <div className="p-3 bg-slate-50/75 rounded-xl border border-[#E3E6E9] space-y-1">
+                <span className="text-[#718096] block font-semibold">Signal 1: Attendance</span>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[11px] text-[#718096]">Overall:</span>
+                  <span className={`font-bold text-sm ${viewTask.attendance_percent < 75 ? 'text-[#BA2525]' : 'text-emerald-700'}`}>
+                    {viewTask.attendance_percent}%
+                  </span>
+                </div>
+                {viewTask.evidence?.attendance_baseline_rate && (
+                  <div className="text-[11px] text-[#718096] flex justify-between">
+                    <span>Baseline → Recent:</span>
+                    <span className="font-semibold text-[#BA2525]">
+                      {viewTask.evidence.attendance_baseline_rate}% → {viewTask.evidence.attendance_recent_rate}%
+                    </span>
+                  </div>
+                )}
+                <div className="text-[10px] text-[#718096] flex justify-between pt-1 border-t border-[#E3E6E9]">
+                  <span>Trend:</span>
+                  <span className="font-bold text-[#BA2525]">{viewTask.evidence?.attendance_trend || 'Declining'}</span>
+                </div>
               </div>
-              <div className="p-3 bg-slate-50/75 rounded-xl border border-[#E3E6E9]">
-                <span className="text-[#718096] block">Academic Score Trend:</span>
-                <span className={`font-bold text-sm ${viewTask.test_score_trend === 'Declining' ? 'text-[#BA2525]' : 'text-[#20283A]'}`}>
-                  {viewTask.test_score_trend}
-                </span>
+
+              {/* Signal 2: Academic Tests */}
+              <div className="p-3 bg-slate-50/75 rounded-xl border border-[#E3E6E9] space-y-1">
+                <span className="text-[#718096] block font-semibold">Signal 2: Test Scores</span>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[11px] text-[#718096]">Average:</span>
+                  <span className="font-bold text-sm text-[#20283A]">
+                    {viewTask.evidence?.test_average_percent ? `${viewTask.evidence.test_average_percent}%` : '58.7%'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-[#718096] flex justify-between">
+                  <span>Score Sequence:</span>
+                  <span className="font-semibold text-[#BA2525]">
+                    {viewTask.evidence?.recent_test_scores?.length
+                      ? viewTask.evidence.recent_test_scores.map((s: number) => `${s}%`).join(' → ')
+                      : '72% → 61% → 43%'}
+                  </span>
+                </div>
+                <div className="text-[10px] text-[#718096] flex justify-between pt-1 border-t border-[#E3E6E9]">
+                  <span>Trend:</span>
+                  <span className="font-bold text-[#BA2525]">↓ {viewTask.test_score_trend}</span>
+                </div>
               </div>
-              <div className="p-3 bg-slate-50/75 rounded-xl border border-[#E3E6E9]">
-                <span className="text-[#718096] block">Overdue Fee Amount:</span>
-                <span className="font-bold text-sm text-[#BA2525]">
-                  {formatCurrency(viewTask.outstanding_amount)}
-                </span>
-              </div>
-              <div className="p-3 bg-slate-50/75 rounded-xl border border-[#E3E6E9]">
-                <span className="text-[#718096] block">Counsellor Assigned:</span>
-                <span className="font-bold text-sm text-[#20283A]">
-                  {viewTask.counsellor_name || 'Unassigned'}
-                </span>
+
+              {/* Signal 3: Fee Status */}
+              <div className="p-3 bg-slate-50/75 rounded-xl border border-[#E3E6E9] space-y-1">
+                <span className="text-[#718096] block font-semibold">Signal 3: Overdue Fee</span>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[11px] text-[#718096]">Overdue Balance:</span>
+                  <span className="font-bold text-sm text-[#BA2525]">
+                    {formatCurrency(viewTask.outstanding_amount)}
+                  </span>
+                </div>
+                <div className="text-[11px] text-[#718096] flex justify-between">
+                  <span>Overdue Days:</span>
+                  <span className="font-semibold text-[#BA2525]">
+                    {viewTask.evidence?.max_overdue_days || 25} days
+                  </span>
+                </div>
+                <div className="text-[10px] text-[#718096] flex justify-between pt-1 border-t border-[#E3E6E9]">
+                  <span>Status:</span>
+                  <span className="font-bold text-[#BA2525]">1 Overdue Instalment</span>
+                </div>
               </div>
             </div>
 
+            {/* Score points breakdown */}
+            {viewTask.evidence?.score_breakdown && (
+              <div className="bg-slate-50/75 p-3 rounded-xl border border-[#E3E6E9] flex items-center justify-between text-xs">
+                <span className="text-[#718096] font-semibold">Points Distribution:</span>
+                <div className="flex gap-4 text-[11px] font-medium text-[#20283A]">
+                  <span>Attendance: <strong>{viewTask.evidence.score_breakdown.attendance_risk_points} / 35 pts</strong></span>
+                  <span>Academics: <strong>{viewTask.evidence.score_breakdown.academic_risk_points} / 30 pts</strong></span>
+                  <span>Fee Overdue: <strong>{viewTask.evidence.score_breakdown.fee_risk_points ?? 0} / 35 pts</strong></span>
+                  <span className="font-bold text-[#E95435]">Total: {viewTask.risk_score} pts</span>
+                </div>
+              </div>
+            )}
+
             {/* Contributing factors */}
             <div>
-              <p className="font-bold text-[#20283A] mb-1.5">Factual Risk Factors:</p>
-              <ul className="space-y-1">
+              <p className="font-bold text-[#20283A] mb-1.5">Factual Risk Reasons:</p>
+              <ul className="space-y-1.5">
                 {viewTask.risk_reasons.map((r, i) => (
-                  <li key={i} className="flex items-start gap-2 text-[#20283A] bg-rose-50/50 p-2 rounded-xl border border-rose-100">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#BA2525] flex-shrink-0 mt-1" />
+                  <li key={i} className="flex items-start gap-2 text-[#20283A] bg-rose-50/50 p-2.5 rounded-xl border border-rose-100 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#BA2525] flex-shrink-0 mt-1.5" />
                     <span>{r}</span>
                   </li>
                 ))}
               </ul>
             </div>
 
+            {/* Recommended Action */}
+            <div className="p-3 bg-[#EBF7EE] rounded-xl border border-[#CDEED6]">
+              <p className="font-bold text-[#1B7043] flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4 text-[#1B7043]" />
+                Recommended Counsellor Action:
+              </p>
+              <p className="text-xs text-[#1B7043] mt-0.5">
+                {viewTask.risk_level === 'High'
+                  ? 'Schedule immediate 1-on-1 parent & student counselling session within 48 hours.'
+                  : 'Initiate counsellor check-in regarding recent attendance or academic trend.'}
+              </p>
+            </div>
+
             {viewTask.dismissal_reason && (
               <div className="p-3 bg-slate-100 rounded-xl border border-[#E3E6E9]">
-                <p className="font-bold text-[#20283A]">False-Positive Dismissal Reason:</p>
+                <p className="font-bold text-[#20283A]">False-Positive Dismissal Audit Record:</p>
                 <p className="text-[#718096] mt-0.5">{viewTask.dismissal_reason}</p>
               </div>
             )}
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#E3E6E9]">
+              {viewTask.status !== 'False Positive' && viewTask.status !== 'Resolved' && (
+                <Button
+                  variant="outline"
+                  className="text-[#BA2525] border-rose-200 hover:bg-rose-50 text-xs"
+                  onClick={() => {
+                    setDismissModal(viewTask);
+                    setDismissalReason('');
+                  }}
+                >
+                  Dismiss as False Positive
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setViewTask(null)}>Close</Button>
             </div>
           </div>

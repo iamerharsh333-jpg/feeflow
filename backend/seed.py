@@ -405,9 +405,15 @@ def seed():
         )
     ]
     db.add_all(notifs)
+    db.commit()
+
+    # 11. Dedicated Demo Dropout-Risk Scenario (STU-0999: Rohan Verma)
+    from app.services.risk import seed_demo_dropout_risk_student
+    demo_student = seed_demo_dropout_risk_student(db)
+    print(f"Seeded dedicated AI dropout-risk demo student: {demo_student.name} ({demo_student.id}).")
 
     db.commit()
-    print("Database seeded successfully with all 5 students, instalments, payments, and reminders.")
+    print("Database seeded successfully with all students, instalments, payments, and risk demo scenario.")
     db.close()
 
 if __name__ == "__main__":

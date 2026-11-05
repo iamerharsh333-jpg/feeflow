@@ -1,3 +1,4 @@
+import re
 import json
 import datetime
 from typing import List, Optional, Dict, Any
@@ -10,18 +11,22 @@ from app.schemas import (
     RiskStatusUpdateRequest, DismissRiskTaskRequest
 )
 from app.auth import require_role
-from app.services.risk import assess_student_risk
+from app.services.risk import (
+    assess_student_risk,
+    seed_demo_dropout_risk_student,
+    run_daily_ai_risk_analysis
+)
 from app.services.currency import to_decimal, ZERO
 
 router = APIRouter(prefix="/risk", tags=["Risk & Counselling"])
 
 @router.get("/summary")
 def get_risk_summary(
-    current_user: User = Depends(require_role("accounts_executive", "admin")),
+    current_user: User = Depends(require_role("accounts_executive", "admin", "counsellor")),
     db: Session = Depends(get_db)
 ):
     query = db.query(CounsellorTask).join(Student, CounsellorTask.student_id == Student.id)
-    if current_user.role == "accounts_executive" and current_user.centre_id:
+    if current_user.role in ["accounts_executive", "counsellor"] and current_user.centre_id:
         query = query.filter(Student.centre_id == current_user.centre_id)
 
     tasks = query.all()
@@ -49,13 +54,13 @@ def get_risk_summary(
 def list_counsellor_tasks(
     risk_level: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
-    current_user: User = Depends(require_role("accounts_executive", "admin")),
+    current_user: User = Depends(require_role("accounts_executive", "admin", "counsellor")),
     db: Session = Depends(get_db)
 ):
     query = db.query(CounsellorTask).join(Student, CounsellorTask.student_id == Student.id)
     
-    # Centre isolation: Accounts executive only sees tasks for their centre
-    if current_user.role == "accounts_executive" and current_user.centre_id:
+    # Centre isolation: Accounts executive and counsellor only see tasks for their centre
+    if current_user.role in ["accounts_executive", "counsellor"] and current_user.centre_id:
         query = query.filter(Student.centre_id == current_user.centre_id)
 
     if risk_level:
@@ -66,6 +71,8 @@ def list_counsellor_tasks(
     tasks = query.order_by(CounsellorTask.created_at.desc()).all()
     results = []
     
+    is_counsellor = (current_user.role == "counsellor")
+
     for t in tasks:
         student = t.student
         reasons = []
@@ -89,12 +96,26 @@ def list_counsellor_tasks(
             att_pct = float(evidence_dict.get("attendance_rate", 85.0))
             score_trend = str(evidence_dict.get("test_score_trend", "Stable"))
 
-        outstanding_dec = sum(
-            (max(ZERO, to_decimal(i.amount) - to_decimal(i.paid_amount))
-            for i in student.instalments
-            if i.status == "Overdue"), ZERO
-        ) if student else ZERO
-        outstanding = float(outstanding_dec)
+        # Safety requirement: Never expose fee amounts to counsellors
+        if is_counsellor:
+            outstanding = 0.0
+            if evidence_dict:
+                evidence_dict.pop("overdue_amount", None)
+                if "score_breakdown" in evidence_dict and isinstance(evidence_dict["score_breakdown"], dict):
+                    evidence_dict["score_breakdown"]["fee_risk_points"] = None
+            # Redact monetary values from reason strings
+            sanitized_reasons = []
+            for r in reasons:
+                sanitized_r = re.sub(r"₹[0-9,]+", "overdue fee balance", r)
+                sanitized_reasons.append(sanitized_r)
+            reasons = sanitized_reasons
+        else:
+            outstanding_dec = sum(
+                (max(ZERO, to_decimal(i.amount) - to_decimal(i.paid_amount))
+                for i in student.instalments
+                if i.status == "Overdue"), ZERO
+            ) if student else ZERO
+            outstanding = float(outstanding_dec)
 
         results.append(CounsellorTaskResponse(
             id=t.id,
@@ -177,7 +198,7 @@ def assign_counsellor(
 def dismiss_risk_task(
     task_id: int,
     body: DismissRiskTaskRequest,
-    current_user: User = Depends(require_role("accounts_executive", "admin")),
+    current_user: User = Depends(require_role("accounts_executive", "admin", "counsellor")),
     db: Session = Depends(get_db)
 ):
     task = db.query(CounsellorTask).filter(CounsellorTask.id == task_id).first()
@@ -185,7 +206,7 @@ def dismiss_risk_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     student = task.student or db.query(Student).filter(Student.id == task.student_id).first()
-    if current_user.role == "accounts_executive" and current_user.centre_id:
+    if current_user.role in ["accounts_executive", "counsellor"] and current_user.centre_id:
         if student and student.centre_id != current_user.centre_id:
             raise HTTPException(status_code=403, detail="Forbidden: Cannot dismiss tasks for foreign centres.")
 
@@ -216,7 +237,7 @@ def dismiss_risk_task(
 def update_task_status(
     task_id: int,
     body: RiskStatusUpdateRequest,
-    current_user: User = Depends(require_role("accounts_executive", "admin")),
+    current_user: User = Depends(require_role("accounts_executive", "admin", "counsellor")),
     db: Session = Depends(get_db)
 ):
     task = db.query(CounsellorTask).filter(CounsellorTask.id == task_id).first()
@@ -224,7 +245,7 @@ def update_task_status(
         raise HTTPException(status_code=404, detail="Task not found")
 
     student = task.student or db.query(Student).filter(Student.id == task.student_id).first()
-    if current_user.role == "accounts_executive" and current_user.centre_id:
+    if current_user.role in ["accounts_executive", "counsellor"] and current_user.centre_id:
         if student and student.centre_id != current_user.centre_id:
             raise HTTPException(status_code=403, detail="Forbidden: Centre isolation violated.")
 
@@ -251,5 +272,51 @@ def update_task_status(
     ))
     db.commit()
     return {"message": f"Task marked as {body.status}", "task_id": task.id}
+
+
+@router.post("/seed-demo")
+def seed_demo_scenario(
+    current_user: User = Depends(require_role("accounts_executive", "admin")),
+    db: Session = Depends(get_db)
+):
+    """
+    Seeds or resets the dedicated demo student (Rohan Verma, STU-0999) with:
+    - Attendance declining from 85.0% to 58.3%
+    - 3 declining test scores (72%, 61%, 43%)
+    - 1 instalment overdue by 25 days
+    - High Risk classification with an initial CounsellorTask
+    """
+    student = seed_demo_dropout_risk_student(db)
+    return {
+        "status": "SUCCESS",
+        "message": "Demo dropout-risk scenario student (STU-0999, Rohan Verma) seeded successfully.",
+        "student_id": student.id,
+        "student_name": student.name,
+        "batch": student.batch,
+        "course": student.course
+    }
+
+
+@router.post("/run-scan")
+def trigger_bulk_risk_scan(
+    current_user: User = Depends(require_role("accounts_executive", "admin")),
+    db: Session = Depends(get_db)
+):
+    """
+    Manually triggers the rule-based dropout risk scan across all students.
+    Creates or updates counsellor tasks for all High and Medium risk students.
+    """
+    res = run_daily_ai_risk_analysis(db)
+    return {
+        "status": "SUCCESS",
+        "message": f"Risk scan completed. Analyzed {res['students_analyzed']} students; updated {res['tasks_updated']} counsellor tasks.",
+        "data": res,
+        "students_analyzed": res.get("students_analyzed", 0),
+        "high_risk_count": res.get("high_risk_count", 0),
+        "medium_risk_count": res.get("medium_risk_count", 0),
+        "low_risk_count": res.get("low_risk_count", 0),
+        "tasks_updated": res.get("tasks_updated", 0)
+    }
+
 
 
