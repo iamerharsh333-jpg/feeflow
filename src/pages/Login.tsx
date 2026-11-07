@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth, type Role } from '../context/AuthContext';
 import { Eye, EyeOff, User, GraduationCap, Briefcase } from 'lucide-react';
+import { api } from '../utils/api';
 
 const ROLES: { id: Role; label: string; icon: typeof User; hintId: string; hintSecret: string; desc: string }[] = [
   { id: 'parent',   label: 'Parent',   icon: User,          hintId: '9876543210',            hintSecret: '123456',      desc: 'Mobile & OTP' },
@@ -24,6 +25,8 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpInfo, setOtpInfo] = useState('');
 
   // If already logged in, redirect directly to dashboard
   if (user) {
@@ -40,6 +43,32 @@ export default function Login() {
     setId(item.hintId);
     setSecret(item.hintSecret);
     setError('');
+    if (demoRole === 'parent') {
+      setOtpInfo('Demo OTP 123456 auto-filled');
+    } else {
+      setOtpInfo('');
+    }
+  };
+
+  const handleRequestOtp = async () => {
+    const trimmedPhone = id.trim();
+    if (!trimmedPhone) {
+      setError('Please enter a mobile number first');
+      return;
+    }
+    setOtpSending(true);
+    setError('');
+    try {
+      const res = await api.sendOtp(trimmedPhone);
+      const generatedOtp = res.demo_otp || '123456';
+      setSecret(generatedOtp);
+      setOtpInfo(`✓ Demo OTP ${generatedOtp} generated and auto-filled`);
+    } catch (err: any) {
+      setSecret('123456');
+      setOtpInfo('✓ Demo OTP 123456 ready to sign in');
+    } finally {
+      setOtpSending(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -146,7 +175,19 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-[#20283A] block mb-1.5">{secretLabel}</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-[#20283A] block">{secretLabel}</label>
+                {role === 'parent' && (
+                  <button
+                    type="button"
+                    onClick={handleRequestOtp}
+                    disabled={otpSending || !id.trim()}
+                    className="text-[11px] font-bold text-[#E95435] hover:text-[#D84527] disabled:opacity-40 transition cursor-pointer"
+                  >
+                    {otpSending ? 'Generating…' : 'Get Demo OTP'}
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <input
                   type={role === 'parent' ? 'text' : show ? 'text' : 'password'}
@@ -170,6 +211,11 @@ export default function Login() {
                   </button>
                 )}
               </div>
+              {role === 'parent' && otpInfo && (
+                <p className="text-[11px] text-emerald-700 font-semibold mt-1.5 flex items-center gap-1">
+                  {otpInfo}
+                </p>
+              )}
             </div>
 
             {error && (

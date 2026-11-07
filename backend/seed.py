@@ -44,7 +44,23 @@ def seed():
         role="admin",
         is_active=True
     )
-    db.add_all([accounts_user, admin_user])
+    counsellor_user = User(
+        identifier="counsellor@feeflow.demo",
+        full_name="Academic Counsellor",
+        hashed_password=hash_password("Demo@12345"),
+        role="counsellor",
+        centre_id=c_jm.id,
+        is_active=True
+    )
+    manager_user = User(
+        identifier="manager@feeflow.demo",
+        full_name="Janakpuri Centre Manager",
+        hashed_password=hash_password("Demo@12345"),
+        role="centre_manager",
+        centre_id=c_jm.id,
+        is_active=True
+    )
+    db.add_all([accounts_user, admin_user, counsellor_user, manager_user])
 
     # 3. Required Students
     # Student 1: Aarav Meena (STU-0412, JEE 2027 Morning, ₹30,000 due 2026-10-10, Paid ₹30,000)

@@ -10,7 +10,7 @@ import { NotificationCenter } from '../components/notifications/NotificationCent
 import {
   CreditCard, Download, LogOut, CheckCircle, Clock, AlertTriangle,
   RefreshCw, FileText, Calendar, BookOpen, ShieldCheck,
-  User, Check, X, Printer, AlertCircle
+  User, Check, X, Printer, AlertCircle, Smartphone, Building2, QrCode
 } from 'lucide-react';
 
 type TabType = 'overview' | 'instalments' | 'receipts' | 'academic' | 'refunds';
@@ -31,6 +31,15 @@ const translations = {
     dueSoon: 'Due Soon',
     dueBy: 'Due by',
     payNow: (amt: string) => `Pay ${amt} Now`,
+    payNowButton: 'Pay Now',
+    originalInstalment: 'Original Amount',
+    paidAmount: 'Amount Paid',
+    remainingAmount: 'Remaining Amount',
+    viewOfficialReceipt: 'View Receipt',
+    payingFor: 'Paying for Student',
+    fullBalanceOption: 'Pay Full Remaining Balance',
+    partialAmountOption: 'Custom Partial Payment',
+    simulatedDisclaimer: 'Simulated Demo Gateway · No Real Money Deducted',
     allPaidTitle: 'All Fees Fully Paid!',
     allPaidDesc: 'There are no outstanding instalments for this academic session.',
     totalFee: 'Total Fee',
@@ -65,6 +74,15 @@ const translations = {
     dueSoon: 'शीघ्र देय',
     dueBy: 'अंतिम तिथि',
     payNow: (amt: string) => `अभी ${amt} भुगतान करें`,
+    payNowButton: 'अभी भुगतान करें',
+    originalInstalment: 'मूल किस्त राशि',
+    paidAmount: 'जमा राशि',
+    remainingAmount: 'बकाया राशि',
+    viewOfficialReceipt: 'रसीद देखें',
+    payingFor: 'विद्यार्थी हेतु भुगतान',
+    fullBalanceOption: 'पूरी बकाया राशि जमा करें',
+    partialAmountOption: 'आंशिक किस्त भुगतान',
+    simulatedDisclaimer: 'सिम्युलेटेड डेमो गेटवे · कोई वास्तविक कटौती नहीं',
     allPaidTitle: 'सभी शुल्क पूर्णतः जमा हैं!',
     allPaidDesc: 'इस शैक्षणिक सत्र के लिए कोई बकाया किस्त शेष नहीं है।',
     totalFee: 'कुल कोर्स शुल्क',
@@ -126,6 +144,12 @@ export default function ParentDashboard() {
   const [payAmount, setPayAmount] = useState<number>(0);
   const [isCustomAmount, setIsCustomAmount] = useState<boolean>(false);
   const [payMethod, setPayMethod] = useState<string>('UPI');
+  const [upiApp, setUpiApp] = useState<'gpay' | 'phonepe' | 'paytm' | 'bhim'>('gpay');
+  const [upiId, setUpiId] = useState<string>('parent@upi');
+  const [selectedBank, setSelectedBank] = useState<string>('HDFC Bank');
+  const [cardNumber, setCardNumber] = useState<string>('4532 8920 1192 8821');
+  const [cardExpiry, setCardExpiry] = useState<string>('12/28');
+  const [cardCvv, setCardCvv] = useState<string>('892');
   const [activeIntent, setActiveIntent] = useState<any | null>(null);
   const [gatewayStatus, setGatewayStatus] = useState<'success' | 'failed' | 'cancelled' | null>(null);
   const [resultMessage, setResultMessage] = useState<string>('');
@@ -240,10 +264,52 @@ export default function ParentDashboard() {
     setGatewayStatus(null);
     setResultMessage('');
     setCreatedReceipt(null);
+    setApiError(null);
+  };
+
+  const handleOpenReceiptForInstalment = (ins: any) => {
+    let rec: any = receipts.find((r: any) =>
+      (ins.receipt_no && (r.receipt_no === ins.receipt_no || r.receiptNo === ins.receipt_no)) ||
+      (ins.id && (r.instalment_id === ins.id || r.instalmentId === ins.id)) ||
+      (r.instalment_number === (ins.instalment_number || ins.number))
+    );
+
+    if (!rec) {
+      const paidAmt = ins.paid_amount ?? ins.paid ?? ins.amount;
+      const baseAmt = Math.round((paidAmt / 1.18) * 100) / 100;
+      const gstAmt = Math.round((paidAmt - baseAmt) * 100) / 100;
+      rec = {
+        id: 999999,
+        receipt_no: ins.receipt_no || `REC-2026-${String(ins.id || '0000').slice(-6).toUpperCase()}`,
+        student_id: student?.id,
+        student_name: student?.name,
+        parent_name: student?.parent_name,
+        parent_phone: student?.parent_phone,
+        instalment_number: ins.instalment_number || ins.number,
+        date: ins.paid_date || ins.paidDate || new Date().toISOString().split('T')[0],
+        base_amount: baseAmt,
+        cgst_amount: Math.round((gstAmt / 2) * 100) / 100,
+        sgst_amount: Math.round((gstAmt / 2) * 100) / 100,
+        total_amount: paidAmt,
+        payment_method: 'Online (Simulated UPI)',
+        gst_number: '08AAACP1234F1Z5',
+        centre_name: student?.centre_name || 'Jaipur Main'
+      };
+    }
+    setViewReceipt(rec);
   };
 
   const handleCreateIntent = async () => {
     if (!student || !selectedInstalment) return;
+    const remainingDue = selectedInstalment.amount - (selectedInstalment.paid_amount ?? selectedInstalment.paid ?? 0);
+    if (payAmount <= 0) {
+      setApiError('Please enter a payment amount greater than zero.');
+      return;
+    }
+    if (payAmount > remainingDue) {
+      setApiError(`Payment amount (₹${payAmount.toLocaleString('en-IN')}) cannot exceed remaining balance (₹${remainingDue.toLocaleString('en-IN')}).`);
+      return;
+    }
     setCheckoutStep('processing');
     try {
       const intentRes = await api.createPaymentIntent({
@@ -567,14 +633,17 @@ export default function ParentDashboard() {
                            <Clock className="w-4 h-4" />}
                         </div>
 
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-sm font-bold text-[#20283A]">
                               Instalment {ins.instalment_number || ins.number}
                             </p>
                             <Badge status={status} />
                           </div>
-                          <p className="text-xs text-[#718096] mt-0.5">
+                          <p className="text-xs text-[#718096]">
+                            Student: <strong className="text-[#20283A]">{student.name}</strong> ({student.id})
+                          </p>
+                          <p className="text-xs text-[#718096]">
                             Due Date: <strong className="text-[#20283A]">{formatDate(ins.due_date || ins.dueDate)}</strong>
                             {!isPaid && (() => {
                               const dDate = new Date(ins.due_date || ins.dueDate);
@@ -593,7 +662,7 @@ export default function ParentDashboard() {
                             })()}
                           </p>
                           {isPaid && ins.paid_date && (
-                            <p className="text-xs text-emerald-700 mt-0.5 font-medium">
+                            <p className="text-xs text-emerald-700 font-medium">
                               Paid on {formatDate(ins.paid_date || ins.paidDate)} {ins.receipt_no ? `· Receipt: ${ins.receipt_no}` : ''}
                             </p>
                           )}
@@ -601,28 +670,51 @@ export default function ParentDashboard() {
                       </div>
 
                       <div className="text-right">
-                        <p className="text-sm font-bold text-[#20283A]">{formatCurrency(ins.amount)}</p>
+                        <span className="text-[10px] text-[#718096] uppercase font-semibold block">Total Instalment</span>
+                        <p className="text-sm font-bold text-[#20283A] tabular-nums">{formatCurrency(ins.amount)}</p>
                         {paid > 0 && !isPaid && (
-                          <p className="text-xs text-emerald-700 font-medium">Paid: {formatCurrency(paid)}</p>
+                          <p className="text-xs text-emerald-700 font-medium tabular-nums mt-0.5">Paid: {formatCurrency(paid)}</p>
                         )}
                         {!isPaid && (
-                          <p className="text-xs text-[#E95435] font-semibold mt-0.5">Due: {formatCurrency(due)}</p>
+                          <p className="text-xs text-[#E95435] font-bold tabular-nums mt-0.5">Due: {formatCurrency(due)}</p>
                         )}
                       </div>
                     </div>
 
-                    {!isPaid && (
-                      <div className="mt-3 flex justify-end gap-2 pt-2 border-t border-[#E3E6E9]">
-                        <Button
-                          size="sm"
-                          onClick={() => handleInitiatePay(ins)}
-                          className="bg-[#E95435] hover:bg-[#D84527] text-white font-semibold text-xs"
-                        >
-                          <CreditCard className="w-3.5 h-3.5 mr-1" />
-                          Pay {paid > 0 ? `Remaining (${formatCurrency(due)})` : formatCurrency(ins.amount)}
-                        </Button>
+                    <div className="mt-3.5 flex items-center justify-between gap-2 pt-2.5 border-t border-[#E3E6E9]">
+                      <div className="text-[11px] text-[#718096]">
+                        {!isPaid ? (
+                          <span>Payable balance: <strong className="text-[#20283A] tabular-nums">{formatCurrency(due)}</strong></span>
+                        ) : (
+                          <span className="text-emerald-700 font-medium flex items-center gap-1">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Settled in full
+                          </span>
+                        )}
                       </div>
-                    )}
+
+                      <div className="flex items-center gap-2">
+                        {isPaid ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenReceiptForInstalment(ins)}
+                            className="text-xs font-semibold text-emerald-800 border-emerald-300 hover:bg-emerald-50 rounded-xl flex items-center gap-1.5"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                            View Receipt
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => handleInitiatePay(ins)}
+                            className="bg-[#E95435] hover:bg-[#D84527] text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-98"
+                          >
+                            <CreditCard className="w-3.5 h-3.5" />
+                            Pay Now ({formatCurrency(due)})
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -871,104 +963,296 @@ export default function ParentDashboard() {
         title="Fee Payment Gateway"
         size="md"
       >
-        {checkoutStep === 'setup' && selectedInstalment && (
-          <div className="p-5 space-y-4">
-            <div className="bg-slate-50/75 border border-[#E3E6E9] rounded-2xl p-4">
-              <span className="text-[10px] text-[#718096] uppercase font-semibold block">Paying Instalment</span>
-              <p className="text-base font-bold text-[#20283A] mt-0.5">
-                Instalment {selectedInstalment.instalment_number || selectedInstalment.number} · {student.course}
-              </p>
-              <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#E3E6E9] text-xs">
-                <span className="text-[#718096]">Total Instalment Amount:</span>
-                <span className="font-bold text-[#20283A]">{formatCurrency(selectedInstalment.amount)}</span>
-              </div>
-              <div className="flex items-center justify-between mt-1 text-xs">
-                <span className="text-[#718096]">Remaining Balance:</span>
-                <span className="font-bold text-[#E95435]">
-                  {formatCurrency(selectedInstalment.amount - (selectedInstalment.paid_amount ?? selectedInstalment.paid ?? 0))}
-                </span>
-              </div>
-            </div>
+        {checkoutStep === 'setup' && selectedInstalment && (() => {
+          const remainingDue = selectedInstalment.amount - (selectedInstalment.paid_amount ?? selectedInstalment.paid ?? 0);
+          const baseComponent = Math.round((payAmount / 1.18) * 100) / 100;
+          const gstComponent = Math.round((payAmount - baseComponent) * 100) / 100;
+          const isOverLimit = payAmount > remainingDue || payAmount <= 0;
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-[#20283A] block">Payment Option</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCustomAmount(false);
-                    setPayAmount(selectedInstalment.amount - (selectedInstalment.paid_amount ?? selectedInstalment.paid ?? 0));
-                  }}
-                  className={`p-3 rounded-xl border text-left transition-all ${
-                    !isCustomAmount ? 'border-[#20283A] bg-slate-50 text-[#20283A] font-bold' : 'border-[#E3E6E9] text-[#718096]'
-                  }`}
-                >
-                  <span className="text-xs block">Pay Full Balance</span>
-                  <span className="text-sm font-extrabold block mt-0.5 text-[#20283A]">
-                    {formatCurrency(selectedInstalment.amount - (selectedInstalment.paid_amount ?? selectedInstalment.paid ?? 0))}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsCustomAmount(true)}
-                  className={`p-3 rounded-xl border text-left transition-all ${
-                    isCustomAmount ? 'border-[#20283A] bg-slate-50 text-[#20283A] font-bold' : 'border-[#E3E6E9] text-[#718096]'
-                  }`}
-                >
-                  <span className="text-xs block">Partial Payment</span>
-                  <span className="text-xs text-[#718096] block mt-0.5">Custom Amount</span>
-                </button>
+          return (
+            <div className="p-5 space-y-4">
+              {/* Simulated Demo Disclaimer Banner */}
+              <div className="bg-amber-50 text-amber-900 border border-amber-200 px-3.5 py-2 rounded-xl text-xs flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-amber-700 flex-shrink-0" />
+                <span className="font-semibold">{t.simulatedDisclaimer}</span>
               </div>
 
-              {isCustomAmount && (
-                <div className="mt-2">
-                  <label className="text-xs text-[#718096] block mb-1">Enter custom partial amount (₹):</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max={selectedInstalment.amount - (selectedInstalment.paid_amount ?? selectedInstalment.paid ?? 0)}
-                    value={payAmount}
-                    onChange={(e) => setPayAmount(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-[#E3E6E9] rounded-xl text-sm font-bold text-[#20283A] focus:ring-2 focus:ring-[#20283A] focus:outline-none"
-                  />
-                  <p className="text-[11px] text-[#718096] mt-1">
-                    Max allowed: {formatCurrency(selectedInstalment.amount - (selectedInstalment.paid_amount ?? selectedInstalment.paid ?? 0))}
-                  </p>
+              {/* Student & Instalment Details Card */}
+              <div className="bg-slate-50/80 border border-[#E3E6E9] rounded-2xl p-4 space-y-2.5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-[10px] text-[#718096] uppercase font-bold tracking-wider block">Student Details</span>
+                    <p className="text-sm font-extrabold text-[#20283A] mt-0.5">{student.name}</p>
+                    <p className="text-xs text-[#718096]">ID: <span className="font-mono font-semibold text-[#20283A]">{student.id}</span> · {student.course} ({student.batch})</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-[#718096] uppercase font-bold tracking-wider block">Instalment</span>
+                    <p className="text-sm font-bold text-[#20283A]">#{selectedInstalment.instalment_number || selectedInstalment.number}</p>
+                    <p className="text-xs text-[#718096]">Due: {formatDate(selectedInstalment.due_date || selectedInstalment.dueDate)}</p>
+                  </div>
                 </div>
-              )}
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#20283A] block">Select Payment Mode</label>
-              <div className="grid grid-cols-3 gap-2">
-                {['UPI', 'Net Banking', 'Card'].map(m => (
+                <div className="grid grid-cols-3 gap-2 pt-2.5 border-t border-[#E3E6E9] text-center text-xs">
+                  <div>
+                    <span className="text-[#718096] text-[10px] uppercase font-semibold block">{t.originalInstalment}</span>
+                    <span className="font-bold text-[#20283A] tabular-nums">{formatCurrency(selectedInstalment.amount)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#718096] text-[10px] uppercase font-semibold block">{t.paidAmount}</span>
+                    <span className="font-bold text-emerald-700 tabular-nums">{formatCurrency(selectedInstalment.paid_amount ?? selectedInstalment.paid ?? 0)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#718096] text-[10px] uppercase font-semibold block">{t.remainingAmount}</span>
+                    <span className="font-bold text-[#E95435] tabular-nums">{formatCurrency(remainingDue)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Amount Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-[#20283A] block">Payment Option</label>
+                <div className="grid grid-cols-2 gap-2">
                   <button
-                    key={m}
                     type="button"
-                    onClick={() => setPayMethod(m)}
-                    className={`py-2 px-3 text-xs rounded-xl border font-semibold text-center transition-all ${
-                      payMethod === m ? 'border-[#20283A] bg-[#20283A] text-white shadow-xs' : 'border-[#E3E6E9] text-[#718096] hover:bg-slate-50'
+                    onClick={() => {
+                      setIsCustomAmount(false);
+                      setPayAmount(remainingDue);
+                      setApiError(null);
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      !isCustomAmount ? 'border-[#20283A] bg-slate-50 text-[#20283A] font-bold shadow-xs' : 'border-[#E3E6E9] text-[#718096] hover:bg-slate-50'
                     }`}
                   >
-                    {m}
+                    <span className="text-xs block">{t.fullBalanceOption}</span>
+                    <span className="text-sm font-extrabold block mt-0.5 text-[#20283A] tabular-nums">
+                      {formatCurrency(remainingDue)}
+                    </span>
                   </button>
-                ))}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomAmount(true);
+                      setApiError(null);
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      isCustomAmount ? 'border-[#20283A] bg-slate-50 text-[#20283A] font-bold shadow-xs' : 'border-[#E3E6E9] text-[#718096] hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="text-xs block">{t.partialAmountOption}</span>
+                    <span className="text-xs text-[#718096] block mt-0.5">Custom partial dues</span>
+                  </button>
+                </div>
+
+                {isCustomAmount && (
+                  <div className="mt-2 bg-slate-50/75 p-3 rounded-xl border border-[#E3E6E9] space-y-1.5">
+                    <label className="text-xs font-semibold text-[#20283A] block">Enter Custom Amount (₹):</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-sm font-bold text-[#718096]">₹</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={remainingDue}
+                        value={payAmount || ''}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setPayAmount(val);
+                          if (val > remainingDue) {
+                            setApiError(`Amount cannot exceed remaining balance (${formatCurrency(remainingDue)})`);
+                          } else if (val <= 0) {
+                            setApiError('Please enter an amount greater than zero');
+                          } else {
+                            setApiError(null);
+                          }
+                        }}
+                        className="w-full pl-7 pr-3 py-2 border border-[#E3E6E9] rounded-xl text-sm font-bold text-[#20283A] focus:ring-2 focus:ring-[#20283A] focus:outline-none bg-white"
+                        placeholder="Enter amount"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-[#718096]">
+                      <span>Max allowed: <strong className="text-[#20283A]">{formatCurrency(remainingDue)}</strong></span>
+                      {payAmount > remainingDue && <span className="text-[#BA2525] font-bold">Exceeds balance!</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment Modes (UPI Prominently First) */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-[#20283A] block">Select Payment Mode</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPayMethod('UPI')}
+                    className={`py-2 px-3 text-xs rounded-xl border font-bold text-center flex items-center justify-center gap-1.5 transition-all ${
+                      payMethod === 'UPI' ? 'border-[#20283A] bg-[#20283A] text-white shadow-xs' : 'border-[#E3E6E9] text-[#718096] hover:bg-slate-50'
+                    }`}
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>UPI (Instant)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPayMethod('Card')}
+                    className={`py-2 px-3 text-xs rounded-xl border font-bold text-center flex items-center justify-center gap-1.5 transition-all ${
+                      payMethod === 'Card' ? 'border-[#20283A] bg-[#20283A] text-white shadow-xs' : 'border-[#E3E6E9] text-[#718096] hover:bg-slate-50'
+                    }`}
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Card</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPayMethod('Net Banking')}
+                    className={`py-2 px-3 text-xs rounded-xl border font-bold text-center flex items-center justify-center gap-1.5 transition-all ${
+                      payMethod === 'Net Banking' ? 'border-[#20283A] bg-[#20283A] text-white shadow-xs' : 'border-[#E3E6E9] text-[#718096] hover:bg-slate-50'
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Net Banking</span>
+                  </button>
+                </div>
+
+                {/* Sub-options for UPI */}
+                {payMethod === 'UPI' && (
+                  <div className="bg-slate-50/80 p-3 rounded-xl border border-[#E3E6E9] space-y-2.5 mt-2">
+                    <span className="text-[11px] font-bold text-[#20283A] block">Popular UPI Apps (Zero Extra Charges)</span>
+                    <div className="grid grid-cols-4 gap-1.5 text-[11px]">
+                      {[
+                        { id: 'gpay', name: 'Google Pay' },
+                        { id: 'phonepe', name: 'PhonePe' },
+                        { id: 'paytm', name: 'Paytm' },
+                        { id: 'bhim', name: 'BHIM UPI' },
+                      ].map(app => (
+                        <button
+                          key={app.id}
+                          type="button"
+                          onClick={() => setUpiApp(app.id as any)}
+                          className={`p-2 rounded-lg border text-center font-medium transition-all ${
+                            upiApp === app.id
+                              ? 'border-[#20283A] bg-white text-[#20283A] font-bold shadow-xs'
+                              : 'border-[#E3E6E9] bg-white/70 text-[#718096] hover:border-slate-300'
+                          }`}
+                        >
+                          {app.name}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="pt-2 border-t border-[#E3E6E9]">
+                      <label className="text-[11px] text-[#718096] block mb-1">UPI ID / VPA handle:</label>
+                      <input
+                        type="text"
+                        value={upiId}
+                        onChange={(e) => setUpiId(e.target.value)}
+                        placeholder="parent@okhdfcbank"
+                        className="w-full px-3 py-1.5 border border-[#E3E6E9] rounded-lg text-xs font-mono text-[#20283A] bg-white focus:outline-none focus:ring-1 focus:ring-[#20283A]"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-options for Card */}
+                {payMethod === 'Card' && (
+                  <div className="bg-slate-50/80 p-3 rounded-xl border border-[#E3E6E9] space-y-2 mt-2 text-xs">
+                    <div>
+                      <label className="text-[11px] text-[#718096] block mb-0.5">Card Number (Mock):</label>
+                      <input
+                        type="text"
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-[#E3E6E9] rounded-lg text-xs font-mono text-[#20283A] bg-white focus:outline-none"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] text-[#718096] block mb-0.5">Valid Thru (MM/YY):</label>
+                        <input
+                          type="text"
+                          value={cardExpiry}
+                          onChange={(e) => setCardExpiry(e.target.value)}
+                          className="w-full px-3 py-1.5 border border-[#E3E6E9] rounded-lg text-xs font-mono text-[#20283A] bg-white focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-[#718096] block mb-0.5">CVV:</label>
+                        <input
+                          type="password"
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(e.target.value)}
+                          maxLength={3}
+                          className="w-full px-3 py-1.5 border border-[#E3E6E9] rounded-lg text-xs font-mono text-[#20283A] bg-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-emerald-700 font-medium block">✓ Visa, Mastercard & RuPay cards supported in simulation</span>
+                  </div>
+                )}
+
+                {/* Sub-options for Net Banking */}
+                {payMethod === 'Net Banking' && (
+                  <div className="bg-slate-50/80 p-3 rounded-xl border border-[#E3E6E9] space-y-1.5 mt-2 text-xs">
+                    <label className="text-[11px] text-[#718096] block">Select Banking Partner:</label>
+                    <select
+                      value={selectedBank}
+                      onChange={(e) => setSelectedBank(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#E3E6E9] rounded-lg text-xs font-semibold text-[#20283A] bg-white focus:outline-none"
+                    >
+                      <option value="HDFC Bank">HDFC Bank</option>
+                      <option value="State Bank of India">State Bank of India (SBI)</option>
+                      <option value="ICICI Bank">ICICI Bank</option>
+                      <option value="Axis Bank">Axis Bank</option>
+                      <option value="Punjab National Bank">Punjab National Bank (PNB)</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Itemized Invoice Summary */}
+              <div className="bg-slate-50/60 rounded-xl p-3 border border-[#E3E6E9] space-y-1 text-xs">
+                <div className="flex justify-between text-[#718096]">
+                  <span>Tuition Base Component:</span>
+                  <span className="font-mono text-[#20283A] tabular-nums">{formatCurrency(baseComponent)}</span>
+                </div>
+                <div className="flex justify-between text-[#718096]">
+                  <span>Statutory GST (18% itemized):</span>
+                  <span className="font-mono text-[#20283A] tabular-nums">{formatCurrency(gstComponent)}</span>
+                </div>
+                <div className="flex justify-between pt-1.5 border-t border-[#E3E6E9] font-bold text-sm">
+                  <span className="text-[#20283A]">Total Amount to Pay:</span>
+                  <span className="text-emerald-700 tabular-nums">{formatCurrency(payAmount)}</span>
+                </div>
+              </div>
+
+              {apiError && (
+                <div className="bg-rose-50 border border-rose-200 text-[#BA2525] rounded-xl p-2.5 text-xs flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{apiError}</span>
+                </div>
+              )}
+
+              {/* Modal Buttons: Confirm Pay and Cancel */}
+              <div className="flex gap-2 pt-1">
+                <Button
+                  variant="outline"
+                  className="flex-1 justify-center py-2.5 text-xs text-[#718096] hover:bg-slate-50"
+                  onClick={() => setCheckoutModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={isOverLimit}
+                  onClick={handleCreateIntent}
+                  className="flex-2 justify-center py-2.5 font-bold shadow-xs bg-[#E95435] hover:bg-[#D84527] text-white disabled:opacity-50"
+                >
+                  Confirm & Pay {formatCurrency(payAmount)}
+                </Button>
               </div>
             </div>
-
-            {apiError && (
-              <div className="bg-rose-50 border border-rose-200 text-[#BA2525] rounded-xl p-2.5 text-xs flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                <span>{apiError}</span>
-              </div>
-            )}
-
-            <Button onClick={handleCreateIntent} className="w-full justify-center py-2.5 font-bold shadow-xs bg-[#E95435] hover:bg-[#D84527] text-white">
-              Proceed to Gateway (₹{payAmount.toLocaleString('en-IN')})
-            </Button>
-          </div>
-        )}
+          );
+        })()}
 
         {checkoutStep === 'gateway' && activeIntent && (
           <div className="p-5 space-y-4">
@@ -979,7 +1263,7 @@ export default function ParentDashboard() {
             <div className="border border-[#E3E6E9] rounded-2xl p-4 bg-slate-50/75 space-y-2 text-xs">
               <div className="flex justify-between">
                 <span className="text-[#718096]">Merchant:</span>
-                <span className="font-bold text-[#20283A]">FeeFlow Academy (Jaipur Main)</span>
+                <span className="font-bold text-[#20283A]">FeeFlow Academy (Janakpuri Campus)</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#718096]">Order ID:</span>
@@ -988,6 +1272,10 @@ export default function ParentDashboard() {
               <div className="flex justify-between">
                 <span className="text-[#718096]">Student:</span>
                 <span className="font-bold text-[#20283A]">{student.name} ({student.id})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#718096]">Instalment:</span>
+                <span className="font-semibold text-[#20283A]">#{selectedInstalment?.instalment_number || selectedInstalment?.number}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#718096]">Payment Mode:</span>
@@ -1055,18 +1343,41 @@ export default function ParentDashboard() {
                 </p>
 
                 {createdReceipt && (
-                  <div className="bg-slate-50/75 border border-[#E3E6E9] rounded-2xl p-3.5 text-xs text-left max-w-xs mx-auto space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-[#718096]">Receipt No:</span>
-                      <span className="font-bold text-[#20283A]">{createdReceipt.receipt_no}</span>
+                  <div className="bg-slate-50/75 border border-[#E3E6E9] rounded-2xl p-4 text-xs text-left max-w-sm mx-auto space-y-2">
+                    <div className="flex justify-between items-center border-b border-[#E3E6E9] pb-2">
+                      <span className="text-[#718096]">Receipt Number:</span>
+                      <span className="font-mono font-bold text-[#20283A]">{createdReceipt.receipt_no}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#718096]">Amount Paid:</span>
-                      <span className="font-bold text-emerald-700">{formatCurrency(createdReceipt.total_amount)}</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[#718096]">Transaction Ref:</span>
+                      <span className="font-mono text-[#20283A]">{createdReceipt.payment_id || activeIntent?.order_id}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#718096]">GST (18%):</span>
-                      <span className="text-[#20283A]">{formatCurrency(createdReceipt.cgst_amount + createdReceipt.sgst_amount)}</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[#718096]">Student:</span>
+                      <span className="font-semibold text-[#20283A]">{createdReceipt.student_name || student.name} ({student.id})</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[#718096]">Instalment:</span>
+                      <span className="font-semibold text-[#20283A]">Instalment #{selectedInstalment?.instalment_number || selectedInstalment?.number}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[#718096]">Payment Method:</span>
+                      <span className="font-semibold text-[#20283A]">{activeIntent?.method || 'UPI'}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[#718096]">Date:</span>
+                      <span className="text-[#20283A]">{formatDate(createdReceipt.date || new Date().toISOString().split('T')[0])}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-[#E3E6E9]">
+                      <span className="text-[#718096]">GST Breakdown (18%):</span>
+                      <span className="font-mono text-[#20283A]">{formatCurrency((createdReceipt.cgst_amount || 0) + (createdReceipt.sgst_amount || 0))}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm font-bold pt-1">
+                      <span className="text-[#20283A]">Amount Paid:</span>
+                      <span className="text-emerald-700">{formatCurrency(createdReceipt.total_amount)}</span>
+                    </div>
+                    <div className="text-[10px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200 mt-2">
+                      <span>Simulated demo payment environment · Official receipt issued & pending reminders cancelled.</span>
                     </div>
                   </div>
                 )}

@@ -5,15 +5,18 @@ from app.models import User, Student
 from app.schemas import PasswordLoginRequest, OTPLoginRequest, SendOTPRequest, Token
 from app.auth import (
     verify_password, create_access_token, send_mock_otp,
-    verify_mock_otp, get_current_user
+    verify_mock_otp, get_current_user, normalize_phone
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/send-otp")
 def request_otp(body: SendOTPRequest, db: Session = Depends(get_db)):
-    phone = body.phone.strip()
-    student = db.query(Student).filter(Student.parent_phone == phone).first()
+    phone = normalize_phone(body.phone)
+    raw_phone = body.phone.strip()
+    student = db.query(Student).filter(
+        (Student.parent_phone == phone) | (Student.parent_phone == raw_phone)
+    ).first()
     if not student:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -23,24 +26,28 @@ def request_otp(body: SendOTPRequest, db: Session = Depends(get_db)):
     return {
         "message": f"Demo OTP generated for {phone}",
         "demo_otp": otp, # clearly identified as demo
-        "expires_in_minutes": 5
+        "expires_in_minutes": 15
     }
 
 @router.post("/verify-otp", response_model=Token)
 def verify_otp_login(body: OTPLoginRequest, db: Session = Depends(get_db)):
-    phone = body.phone.strip()
-    if not verify_mock_otp(phone, body.otp):
+    phone = normalize_phone(body.phone)
+    raw_phone = body.phone.strip()
+    if not verify_mock_otp(body.phone, body.otp):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired OTP."
         )
     
-    student = db.query(Student).filter(Student.parent_phone == phone).first()
+    student = db.query(Student).filter(
+        (Student.parent_phone == phone) | (Student.parent_phone == raw_phone)
+    ).first()
     if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found for this parent.")
 
+    identifier = student.parent_phone or phone
     token = create_access_token({
-        "sub": phone,
+        "sub": identifier,
         "role": "parent",
         "student_id": student.id,
         "name": student.parent_name,
@@ -51,7 +58,7 @@ def verify_otp_login(body: OTPLoginRequest, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "role": "parent",
         "name": student.parent_name,
-        "identifier": phone,
+        "identifier": identifier,
         "centre_id": student.centre_id,
         "student_id": student.id
     }
