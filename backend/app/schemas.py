@@ -98,6 +98,47 @@ class StudentResponse(BaseModel):
     instalments: List[InstalmentResponse] = []
     model_config = ConfigDict(from_attributes=True)
 
+# Receipt
+class ReceiptResponse(BaseModel):
+    id: int
+    receipt_no: str
+    payment_id: str
+    student_id: str
+    student_name: str
+    date: date
+    base_amount: float
+    gst_rate: float
+    cgst_amount: float
+    sgst_amount: float
+    total_amount: float
+    gst_number: str
+
+class ReceiptDetailResponse(BaseModel):
+    id: int
+    receipt_no: str
+    payment_id: str
+    transaction_id: str
+    payment_method: str
+    student_id: str
+    student_name: str
+    roll_number: str
+    course: str
+    batch: str
+    centre_name: str
+    parent_name: str
+    parent_phone: str
+    instalment_number: Optional[int] = None
+    date: date
+    base_amount: float
+    gst_rate: float
+    cgst_amount: float
+    sgst_amount: float
+    total_amount: float
+    gst_number: str
+    tax_treatment: str
+    is_demo: bool = True
+
+
 # Payment
 class PaymentCreate(BaseModel):
     student_id: str
@@ -167,6 +208,7 @@ class PaymentVerifyRequest(BaseModel):
     signature: str
     simulation_status: str = "success" # success, failed, cancelled
 
+
 class PaymentVerifyResponse(BaseModel):
     status: str
     message: str
@@ -177,46 +219,6 @@ class MockPaymentWebhook(BaseModel):
     order_id: str
     payment_id: str
     signature: str
-
-# Receipt
-class ReceiptResponse(BaseModel):
-    id: int
-    receipt_no: str
-    payment_id: str
-    student_id: str
-    student_name: str
-    date: date
-    base_amount: float
-    gst_rate: float
-    cgst_amount: float
-    sgst_amount: float
-    total_amount: float
-    gst_number: str
-
-class ReceiptDetailResponse(BaseModel):
-    id: int
-    receipt_no: str
-    payment_id: str
-    transaction_id: str
-    payment_method: str
-    student_id: str
-    student_name: str
-    roll_number: str
-    course: str
-    batch: str
-    centre_name: str
-    parent_name: str
-    parent_phone: str
-    instalment_number: Optional[int] = None
-    date: date
-    base_amount: float
-    gst_rate: float
-    cgst_amount: float
-    sgst_amount: float
-    total_amount: float
-    gst_number: str
-    tax_treatment: str
-    is_demo: bool = True
 
 # Reminder
 class ReminderResponse(BaseModel):
