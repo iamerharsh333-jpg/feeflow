@@ -30,7 +30,10 @@ class Settings:
     API_V1_STR: str = "/api/v1"
     
     # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./feeflow.db")
+    # Vercel serverless functions have a read-only application filesystem.
+    # Use writable temporary storage for demo mode when no external DB is configured.
+    _default_database_url = "sqlite:////tmp/feeflow.db" if os.getenv("VERCEL") == "1" else "sqlite:///./feeflow.db"
+    DATABASE_URL: str = os.getenv("DATABASE_URL", _default_database_url)
     
     # Frontend URL / CORS Origins (supports comma-separated list of origins)
     FRONTEND_URL: Optional[str] = os.getenv("FRONTEND_URL", None)
