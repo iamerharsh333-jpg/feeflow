@@ -32,6 +32,9 @@ class Settings:
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./feeflow.db")
     
+    # Frontend URL / CORS Origins (supports comma-separated list of origins)
+    FRONTEND_URL: Optional[str] = os.getenv("FRONTEND_URL", None)
+    
     # JWT Auth
     JWT_SECRET: str = os.getenv("JWT_SECRET", "feeflow-super-secret-key-change-in-production-2026")
     JWT_ALGORITHM: str = "HS256"

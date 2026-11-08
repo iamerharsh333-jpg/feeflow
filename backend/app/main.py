@@ -96,17 +96,27 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS
+# CORS Configuration: Preserves all existing localhost origins and adds FRONTEND_URL if configured
+base_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+cors_origins = list(base_origins)
+if settings.FRONTEND_URL:
+    for raw_origin in settings.FRONTEND_URL.split(","):
+        origin = raw_origin.strip().rstrip("/")
+        # Never add wildcard origin when allow_credentials=True
+        if origin and origin != "*" and origin not in cors_origins:
+            cors_origins.append(origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
+    allow_origins=cors_origins,
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
